@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Vercel hobby plan defaults to 10s — bump to 60s (requires Pro plan, gracefully ignored on hobby)
 export const maxDuration = 60;
 
 interface AnalyzeBody {
@@ -10,8 +9,69 @@ interface AnalyzeBody {
   prompt: string;
 }
 
-async function callGemini(model: string, apiKey: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+// --- Helpers ---
+
+function errorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+function handleUpstreamError(provider: string, status: number): string {
+  if (status === 429) return 'Rate limit exceeded. Please wait and try again.';
+  if (status === 401) return `Invalid ${provider} API key.`;
+  if (status === 402) return `Insufficient ${provider} credits.`;
+  if (status === 400 || status === 403) return `Invalid ${provider} API key.`;
+  return `${provider} API error: ${status}`;
+}
+
+const encoder = new TextEncoder();
+
+/** Parse an SSE stream, extract text deltas via extractText, and write them to the controller. */
+async function pipeSSEStream(
+  upstream: Response,
+  extractText: (parsed: Record<string, unknown>) => string | null,
+  controller: ReadableStreamDefaultController
+) {
+  const reader = upstream.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (dataStr === '[DONE]') continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+          const text = extractText(data);
+          if (text) {
+            controller.enqueue(encoder.encode(text));
+          }
+        } catch {
+          // skip unparseable lines
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// --- Provider streaming requests ---
+
+async function streamGemini(
+  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,17 +81,18 @@ async function callGemini(model: string, apiKey: string, prompt: string): Promis
     }),
   });
 
-  if (!res.ok) {
-    if (res.status === 429) throw new Error('Rate limit exceeded. Please wait and try again.');
-    if (res.status === 400 || res.status === 403) throw new Error('Invalid Gemini API key.');
-    throw new Error(`Gemini API error: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(handleUpstreamError('Gemini', res.status));
 
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No analysis generated.';
+  await pipeSSEStream(res, (data) => {
+    const parts = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })
+      .candidates?.[0]?.content?.parts;
+    return parts?.[0]?.text || null;
+  }, controller);
 }
 
-async function callOpenAI(model: string, apiKey: string, prompt: string): Promise<string> {
+async function streamOpenAI(
+  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -43,21 +104,23 @@ async function callOpenAI(model: string, apiKey: string, prompt: string): Promis
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 4096,
+      stream: true,
     }),
   });
 
   if (!res.ok) {
-    if (res.status === 429) throw new Error('Rate limit exceeded. Please wait and try again.');
-    if (res.status === 401) throw new Error('Invalid OpenAI API key.');
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `OpenAI API error: ${res.status}`);
+    throw new Error((errData as { error?: { message?: string } }).error?.message || handleUpstreamError('OpenAI', res.status));
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || 'No analysis generated.';
+  await pipeSSEStream(res, (data) => {
+    return (data as { choices?: { delta?: { content?: string } }[] }).choices?.[0]?.delta?.content || null;
+  }, controller);
 }
 
-async function callAnthropic(model: string, apiKey: string, prompt: string): Promise<string> {
+async function streamAnthropic(
+  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -69,21 +132,26 @@ async function callAnthropic(model: string, apiKey: string, prompt: string): Pro
       model,
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
+      stream: true,
     }),
   });
 
   if (!res.ok) {
-    if (res.status === 429) throw new Error('Rate limit exceeded. Please wait and try again.');
-    if (res.status === 401) throw new Error('Invalid Anthropic API key.');
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `Anthropic API error: ${res.status}`);
+    throw new Error((errData as { error?: { message?: string } }).error?.message || handleUpstreamError('Anthropic', res.status));
   }
 
-  const data = await res.json();
-  return data.content?.[0]?.text || 'No analysis generated.';
+  await pipeSSEStream(res, (data) => {
+    if ((data as { type?: string }).type === 'content_block_delta') {
+      return (data as { delta?: { text?: string } }).delta?.text || null;
+    }
+    return null;
+  }, controller);
 }
 
-async function callOpenRouter(model: string, apiKey: string, prompt: string): Promise<string> {
+async function streamOpenRouter(
+  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+) {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -95,57 +163,64 @@ async function callOpenRouter(model: string, apiKey: string, prompt: string): Pr
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 4096,
+      stream: true,
     }),
   });
 
   if (!res.ok) {
-    if (res.status === 429) throw new Error('Rate limit exceeded. Please wait and try again.');
-    if (res.status === 401) throw new Error('Invalid OpenRouter API key.');
-    if (res.status === 402) throw new Error('Insufficient OpenRouter credits.');
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `OpenRouter API error: ${res.status}`);
+    throw new Error((errData as { error?: { message?: string } }).error?.message || handleUpstreamError('OpenRouter', res.status));
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || 'No analysis generated.';
+  await pipeSSEStream(res, (data) => {
+    return (data as { choices?: { delta?: { content?: string } }[] }).choices?.[0]?.delta?.content || null;
+  }, controller);
 }
+
+// --- Main handler ---
 
 export async function POST(request: NextRequest) {
   let body: AnalyzeBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    return errorResponse('Invalid request body', 400);
   }
 
   const { provider, model, apiKey, prompt } = body;
 
   if (!provider || !model || !apiKey || !prompt) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    return errorResponse('Missing required fields', 400);
   }
 
-  try {
-    let result: string;
-    switch (provider) {
-      case 'gemini':
-        result = await callGemini(model, apiKey, prompt);
-        break;
-      case 'openai':
-        result = await callOpenAI(model, apiKey, prompt);
-        break;
-      case 'anthropic':
-        result = await callAnthropic(model, apiKey, prompt);
-        break;
-      case 'openrouter':
-        result = await callOpenRouter(model, apiKey, prompt);
-        break;
-      default:
-        return NextResponse.json({ error: `Unknown provider: ${provider}` }, { status: 400 });
-    }
+  const streamFn = {
+    gemini: streamGemini,
+    openai: streamOpenAI,
+    anthropic: streamAnthropic,
+    openrouter: streamOpenRouter,
+  }[provider];
 
-    return NextResponse.json({ result });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Analysis failed';
-    return NextResponse.json({ error: message }, { status: 502 });
+  if (!streamFn) {
+    return errorResponse(`Unknown provider: ${provider}`, 400);
   }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        await streamFn(model, apiKey, prompt, controller);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Analysis failed';
+        // Send error as a special prefix so the client can detect it
+        controller.enqueue(encoder.encode(`__ERROR__:${message}`));
+      }
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    },
+  });
 }

@@ -85,15 +85,21 @@ export default function Home() {
       return;
     }
 
-    // Step 3: Run LLM analysis (use local `data`, not stale `candles` state)
-    setAnalysis({ loading: true, result: null, error: null });
+    // Step 3: Run LLM analysis with streaming (use local `data`, not stale `candles` state)
+    setAnalysis({ loading: true, result: '', error: null });
     try {
       const prompt = formatOHLCForPrompt(query.symbol, data);
-      const result = await analyzeChart(model, apiKey, prompt);
-      setAnalysis({ loading: false, result, error: null });
+      await analyzeChart(model, apiKey, prompt, (chunk) => {
+        setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
+      });
+      setAnalysis((prev) => ({ ...prev, loading: false }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Analysis failed';
-      setAnalysis({ loading: false, result: null, error: message });
+      setAnalysis((prev) => ({
+        loading: false,
+        result: prev.result || null,
+        error: message,
+      }));
     }
   }, []);
 
