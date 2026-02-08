@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+body {
+  background: #ffffff;
+  color: #111827;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.dark body {
+  background: #0a0a0a;
+  color: #ededed;
+}
+
+.analysis-content h1,
+.analysis-content h2,
+.analysis-content h3,
+.analysis-content h4 {
+  font-weight: 700;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  color: #111827;
+}
+.dark .analysis-content h1,
+.dark .analysis-content h2,
+.dark .analysis-content h3,
+.dark .analysis-content h4 {
+  color: #f3f4f6;
+}
+.analysis-content h1 { font-size: 1.25rem; }
+.analysis-content h2 { font-size: 1.125rem; }
+.analysis-content h3 { font-size: 1rem; }
+
+.analysis-content p {
+  margin-bottom: 0.75em;
+}
+
+.analysis-content strong {
+  font-weight: 600;
+  color: #1f2937;
+}
+.dark .analysis-content strong {
+  color: #e5e7eb;
+}
+
+.analysis-content ul,
+.analysis-content ol {
+  margin-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+.analysis-content ul { list-style-type: disc; }
+.analysis-content ol { list-style-type: decimal; }
+
+.analysis-content li {
+  margin-bottom: 0.35em;
+}
+.analysis-content li > ul,
+.analysis-content li > ol {
+  margin-top: 0.35em;
+  margin-bottom: 0;
+}
+
+.analysis-content code {
+  background: #f3f4f6;
+  padding: 0.125em 0.375em;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+}
+.dark .analysis-content code {
+  background: #1f2937;
+}
+
+.analysis-content hr {
+  border-color: #e5e7eb;
+  margin: 1em 0;
+}
+.dark .analysis-content hr {
+  border-color: #374151;
+}
+
+.analysis-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75em;
+  font-size: 0.85em;
+}
+.analysis-content th,
+.analysis-content td {
+  border: 1px solid #e5e7eb;
+  padding: 0.375em 0.625em;
+  text-align: left;
+}
+.dark .analysis-content th,
+.dark .analysis-content td {
+  border-color: #374151;
+}
+.analysis-content th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.dark .analysis-content th {
+  background: #1f2937;
+}
