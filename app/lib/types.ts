@@ -125,6 +125,7 @@ export interface FundamentalsData {
   fetchedAt: string;
   metrics: FundamentalMetric[];
   analystTargets: AnalystTargets | null;
+  rawResponse?: FmpFundamentalsResponse;
 }
 
 export interface FundamentalsState {

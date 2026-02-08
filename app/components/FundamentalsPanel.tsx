@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import type { FundamentalsData } from '../lib/types';
 
 interface FundamentalsPanelProps {
@@ -32,6 +33,17 @@ function SkeletonRows() {
 }
 
 export default function FundamentalsPanel({ data, loading, error }: FundamentalsPanelProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!data?.rawResponse) return;
+    const text = JSON.stringify(data.rawResponse);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [data]);
+
   // Don't render anything before first analysis
   if (!data && !loading && !error) return null;
 
@@ -39,12 +51,32 @@ export default function FundamentalsPanel({ data, loading, error }: Fundamentals
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 p-3 sm:p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Fundamentals</h2>
-        {loading && (
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <Spinner />
-            Loading...
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {data?.rawResponse && (
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              {copied ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  Copied
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  Copy Data
+                </>
+              )}
+            </button>
+          )}
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <Spinner />
+              Loading...
+            </div>
+          )}
+        </div>
       </div>
 
       {error && (

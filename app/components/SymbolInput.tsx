@@ -26,10 +26,12 @@ const VALID_INTERVALS: Record<Timeframe, Interval[]> = {
 
 interface SymbolInputProps {
   onAnalyze: (query: StockQuery) => void;
+  onGetData: (query: StockQuery) => void;
   loading: boolean;
+  dataLoading: boolean;
 }
 
-export default function SymbolInput({ onAnalyze, loading }: SymbolInputProps) {
+export default function SymbolInput({ onAnalyze, onGetData, loading, dataLoading }: SymbolInputProps) {
   const [symbol, setSymbol] = useState('AAPL');
   const [range, setRange] = useState<Timeframe>('1mo');
   const [interval, setInterval] = useState<Interval>('1d');
@@ -93,23 +95,46 @@ export default function SymbolInput({ onAnalyze, loading }: SymbolInputProps) {
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={loading || !symbol.trim()}
-        className="w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Analyzing...
-          </span>
-        ) : (
-          'Analyze'
-        )}
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={dataLoading || loading || !symbol.trim()}
+          onClick={() => {
+            if (!symbol.trim()) return;
+            onGetData({ symbol: symbol.trim().toUpperCase(), range, interval });
+          }}
+          className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {dataLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Fetching...
+            </span>
+          ) : (
+            'Get Data'
+          )}
+        </button>
+        <button
+          type="submit"
+          disabled={loading || !symbol.trim()}
+          className="rounded-md bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Analyzing...
+            </span>
+          ) : (
+            'Analyze'
+          )}
+        </button>
+      </div>
     </form>
   );
 }

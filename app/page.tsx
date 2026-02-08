@@ -25,6 +25,10 @@ const Chart = dynamic(() => import('./components/Chart'), {
   ),
 });
 
+function queryKey(q: StockQuery): string {
+  return `${q.symbol}|${q.range}|${q.interval}`;
+}
+
 export default function Home() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [symbol, setSymbol] = useState('');
@@ -42,12 +46,18 @@ export default function Home() {
     error: null,
   });
   const [isDark, setIsDark] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
 
   const modelRef = useRef<ModelConfig | null>(null);
   const apiKeyRef = useRef('');
   const systemPromptRef = useRef('');
   const fmpApiKeyRef = useRef('');
   const messagesRef = useRef<ChatMessage[]>([]);
+
+  // Cache for fetched data so Analyze can reuse it
+  const cachedQueryRef = useRef<string>('');
+  const cachedCandlesRef = useRef<CandleData[]>([]);
+  const cachedFundRef = useRef<FundamentalsData | null>(null);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'));
@@ -65,10 +75,9 @@ export default function Home() {
     fmpApiKeyRef.current = fmpApiKey;
   }, []);
 
-  const handleAnalyze = useCallback(async (query: StockQuery) => {
+  // Shared data-fetching logic. Returns { candles, fundData } or null on failure.
+  const fetchData = useCallback(async (query: StockQuery): Promise<{ candles: CandleData[]; fundData: FundamentalsData | null } | null> => {
     setChartError(null);
-    setAnalysis({ loading: false, result: null, error: null });
-    setMessages([]);
     setChartLoading(true);
     setSymbol(query.symbol);
     setCandles([]);
@@ -79,7 +88,6 @@ export default function Home() {
       setFundamentals({ loading: false, data: null, error: null });
     }
 
-    // Step 1: Fetch price data (and fundamentals in parallel if FMP key is set)
     const pricePromise = fetchStockData(query);
     const fundPromise = hasFmpKey
       ? fetchFundamentals(query.symbol, fmpApiKeyRef.current)
@@ -87,7 +95,6 @@ export default function Home() {
 
     const [priceResult, fundResult] = await Promise.allSettled([pricePromise, fundPromise]);
 
-    // Handle price data (always first)
     let data: CandleData[];
     if (priceResult.status === 'fulfilled') {
       data = priceResult.value;
@@ -100,10 +107,9 @@ export default function Home() {
       setChartError(message);
       setChartLoading(false);
       setFundamentals({ loading: false, data: null, error: null });
-      return;
+      return null;
     }
 
-    // Handle fundamentals (non-blocking — analysis can still proceed without it)
     let fundData: FundamentalsData | null = null;
     if (hasFmpKey && fundResult.status === 'fulfilled' && fundResult.value) {
       fundData = fundResult.value;
@@ -115,7 +121,44 @@ export default function Home() {
       setFundamentals({ loading: false, data: null, error: message });
     }
 
-    // Step 2: Validate model settings
+    // Cache for reuse
+    cachedQueryRef.current = queryKey(query);
+    cachedCandlesRef.current = data;
+    cachedFundRef.current = fundData;
+
+    return { candles: data, fundData };
+  }, []);
+
+  const handleGetData = useCallback(async (query: StockQuery) => {
+    setDataLoading(true);
+    setAnalysis({ loading: false, result: null, error: null });
+    setMessages([]);
+    await fetchData(query);
+    setDataLoading(false);
+  }, [fetchData]);
+
+  const handleAnalyze = useCallback(async (query: StockQuery) => {
+    setAnalysis({ loading: false, result: null, error: null });
+    setMessages([]);
+
+    // Reuse cached data if query matches
+    let data: CandleData[];
+    let fundData: FundamentalsData | null;
+    const key = queryKey(query);
+
+    if (cachedQueryRef.current === key && cachedCandlesRef.current.length > 0) {
+      data = cachedCandlesRef.current;
+      fundData = cachedFundRef.current;
+      setSymbol(query.symbol);
+      // Data already displayed — no need to refetch
+    } else {
+      const result = await fetchData(query);
+      if (!result) return;
+      data = result.candles;
+      fundData = result.fundData;
+    }
+
+    // Validate model settings
     const model = modelRef.current;
     const apiKey = apiKeyRef.current;
 
@@ -128,7 +171,7 @@ export default function Home() {
       return;
     }
 
-    // Step 3: Build conversation and run LLM analysis (with fundamentals if available)
+    // Build conversation and run LLM analysis
     const sysPrompt = systemPromptRef.current || buildSystemPrompt();
     const userMsg: ChatMessage = { role: 'user', content: buildInitialUserMessage(query.symbol, data, fundData) };
     const newMessages: ChatMessage[] = [userMsg];
@@ -155,7 +198,7 @@ export default function Home() {
         error: message,
       }));
     }
-  }, []);
+  }, [fetchData]);
 
   const handleFollowUp = useCallback(async (text: string) => {
     const model = modelRef.current;
@@ -194,6 +237,19 @@ export default function Home() {
   }, []);
 
   const isLoading = chartLoading || analysis.loading || fundamentals.loading;
+  const hasData = candles.length > 0;
+
+  const [allCopied, setAllCopied] = useState(false);
+  const handleCopyAll = useCallback(() => {
+    const payload: Record<string, unknown> = { candles };
+    if (fundamentals.data?.rawResponse) {
+      payload.fundamentals = fundamentals.data.rawResponse;
+    }
+    navigator.clipboard.writeText(JSON.stringify(payload)).then(() => {
+      setAllCopied(true);
+      setTimeout(() => setAllCopied(false), 2000);
+    });
+  }, [candles, fundamentals.data]);
 
   return (
     <main className="min-h-screen">
@@ -213,7 +269,7 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
           <div className="lg:col-span-1 space-y-4">
             <ModelSettings onSettingsChange={handleSettingsChange} />
-            <SymbolInput onAnalyze={handleAnalyze} loading={isLoading} />
+            <SymbolInput onAnalyze={handleAnalyze} onGetData={handleGetData} loading={isLoading} dataLoading={dataLoading} />
           </div>
 
           <div className="lg:col-span-3 space-y-4 sm:space-y-6">
@@ -228,6 +284,24 @@ export default function Home() {
               loading={fundamentals.loading}
               error={fundamentals.error}
             />
+            {hasData && (
+              <button
+                onClick={handleCopyAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                {allCopied ? (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    Copy All Data
+                  </>
+                )}
+              </button>
+            )}
             <AnalysisPanel
               messages={messages}
               streamingResult={analysis.result}

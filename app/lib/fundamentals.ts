@@ -21,7 +21,9 @@ export async function fetchFundamentals(symbol: string, fmpApiKey: string): Prom
   }
 
   const data: FmpFundamentalsResponse = await response.json();
-  return parseFundamentals(symbol, data);
+  const parsed = parseFundamentals(symbol, data);
+  parsed.rawResponse = data;
+  return parsed;
 }
 
 // --- Formatting helpers ---
