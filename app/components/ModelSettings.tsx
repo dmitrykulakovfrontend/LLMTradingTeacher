@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   MODELS,
   PROVIDERS,
@@ -10,9 +10,10 @@ import {
   type ModelConfig,
   type Provider,
 } from '../lib/models';
+import { DEFAULT_SYSTEM_PROMPT } from '../lib/formatData';
 
 interface ModelSettingsProps {
-  onSettingsChange: (model: ModelConfig, apiKey: string) => void;
+  onSettingsChange: (model: ModelConfig, apiKey: string, systemPrompt: string, fmpApiKey: string) => void;
 }
 
 interface UsageInfo {
@@ -30,13 +31,22 @@ export default function ModelSettings({ onSettingsChange }: ModelSettingsProps) 
   const [visible, setVisible] = useState(false);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [fmpKey, setFmpKey] = useState('');
+  const [fmpVisible, setFmpVisible] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [promptDirty, setPromptDirty] = useState(false);
 
   const model = getModel(modelId);
   const provider = PROVIDERS[model.provider];
+  const customPromptRef = useRef(customPrompt);
+  const fmpKeyRef = useRef(fmpKey);
+  useEffect(() => { customPromptRef.current = customPrompt; }, [customPrompt]);
+  useEffect(() => { fmpKeyRef.current = fmpKey; }, [fmpKey]);
 
   const notifyParent = useCallback(
-    (m: ModelConfig, key: string) => {
-      onSettingsChange(m, key);
+    (m: ModelConfig, key: string, prompt?: string, fmp?: string) => {
+      onSettingsChange(m, key, prompt ?? customPromptRef.current, fmp ?? fmpKeyRef.current);
     },
     [onSettingsChange]
   );
@@ -65,14 +75,18 @@ export default function ModelSettings({ onSettingsChange }: ModelSettingsProps) 
     setUsageLoading(false);
   }, []);
 
-  // Load saved model + key on mount
+  // Load saved model + key + prompt + FMP key on mount
   useEffect(() => {
     const savedModelId = localStorage.getItem('llm-selected-model') || DEFAULT_MODEL_ID;
     setModelId(savedModelId);
     const m = getModel(savedModelId);
     const savedKey = localStorage.getItem(getStorageKey(m.provider)) || '';
     setApiKey(savedKey);
-    notifyParent(m, savedKey);
+    const savedPrompt = localStorage.getItem('llm-system-prompt') || DEFAULT_SYSTEM_PROMPT;
+    setCustomPrompt(savedPrompt);
+    const savedFmpKey = localStorage.getItem('fmp-api-key') || '';
+    setFmpKey(savedFmpKey);
+    notifyParent(m, savedKey, savedPrompt, savedFmpKey);
     if (savedKey) fetchUsage(m.provider, savedKey);
   }, [notifyParent, fetchUsage]);
 
@@ -97,6 +111,31 @@ export default function ModelSettings({ onSettingsChange }: ModelSettingsProps) 
 
   const handleCheckUsage = () => {
     if (apiKey) fetchUsage(model.provider, apiKey);
+  };
+
+  const handleFmpKeyChange = (value: string) => {
+    setFmpKey(value);
+    localStorage.setItem('fmp-api-key', value);
+    notifyParent(model, apiKey, undefined, value);
+  };
+
+  const handlePromptSave = () => {
+    localStorage.setItem('llm-system-prompt', customPrompt);
+    setPromptDirty(false);
+    notifyParent(model, apiKey, customPrompt);
+  };
+
+  const handlePromptReset = () => {
+    setCustomPrompt(DEFAULT_SYSTEM_PROMPT);
+    setPromptDirty(false);
+    localStorage.removeItem('llm-system-prompt');
+    notifyParent(model, apiKey, DEFAULT_SYSTEM_PROMPT);
+  };
+
+  const handlePromptChange = (value: string) => {
+    setCustomPrompt(value);
+    const saved = localStorage.getItem('llm-system-prompt') || DEFAULT_SYSTEM_PROMPT;
+    setPromptDirty(value !== saved);
   };
 
   // Group models by provider for the dropdown
@@ -173,6 +212,82 @@ export default function ModelSettings({ onSettingsChange }: ModelSettingsProps) 
       {usage && (
         <UsageDisplay info={usage} providerName={model.provider} />
       )}
+
+      {/* FMP API Key */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Financial Modeling Prep API Key
+        </label>
+        <div className="flex gap-2">
+          <input
+            type={fmpVisible ? 'text' : 'password'}
+            value={fmpKey}
+            onChange={(e) => handleFmpKeyChange(e.target.value)}
+            placeholder="Your FMP API key"
+            className="flex-1 min-w-0 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            type="button"
+            onClick={() => setFmpVisible(!fmpVisible)}
+            className="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            {fmpVisible ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-gray-500">
+          {fmpKey ? 'Key saved to browser' : 'Free key at financialmodelingprep.com — used for fundamental data'}
+        </p>
+      </div>
+
+      {/* System Prompt */}
+      <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+        <button
+          type="button"
+          onClick={() => setPromptExpanded(!promptExpanded)}
+          className="flex items-center justify-between w-full text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          <span>System Prompt</span>
+          <svg
+            className={`h-4 w-4 transition-transform ${promptExpanded ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {promptExpanded && (
+          <div className="mt-2 space-y-2">
+            <textarea
+              value={customPrompt}
+              onChange={(e) => handlePromptChange(e.target.value)}
+              rows={12}
+              className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-mono text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+            />
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handlePromptSave}
+                  disabled={!promptDirty || !customPrompt.trim()}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePromptReset}
+                  className="rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Reset to Default
+                </button>
+              </div>
+              {promptDirty && (
+                <span className="text-xs text-amber-500">Unsaved changes</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

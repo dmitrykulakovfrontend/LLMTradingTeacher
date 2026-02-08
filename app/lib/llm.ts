@@ -1,11 +1,13 @@
 import type { ModelConfig } from './models';
+import type { ChatMessage } from './types';
 
 const ERROR_PREFIX = '__ERROR__:';
 
 export async function analyzeChart(
   model: ModelConfig,
   apiKey: string,
-  prompt: string,
+  systemPrompt: string,
+  messages: ChatMessage[],
   onChunk: (text: string) => void
 ): Promise<void> {
   const response = await fetch('/api/analyze', {
@@ -15,7 +17,8 @@ export async function analyzeChart(
       provider: model.provider,
       model: model.modelId,
       apiKey,
-      prompt,
+      systemPrompt,
+      messages,
     }),
   });
 

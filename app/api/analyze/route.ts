@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
+interface ChatMsg {
+  role: string;
+  content: string;
+}
+
 interface AnalyzeBody {
   provider: string;
   model: string;
   apiKey: string;
-  prompt: string;
+  systemPrompt: string;
+  messages: ChatMsg[];
 }
 
 // --- Helpers ---
@@ -69,14 +75,19 @@ async function pipeSSEStream(
 // --- Provider streaming requests ---
 
 async function streamGemini(
-  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+  model: string, apiKey: string, systemPrompt: string, messages: ChatMsg[], controller: ReadableStreamDefaultController
 ) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
       generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
     }),
   });
@@ -91,7 +102,7 @@ async function streamGemini(
 }
 
 async function streamOpenAI(
-  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+  model: string, apiKey: string, systemPrompt: string, messages: ChatMsg[], controller: ReadableStreamDefaultController
 ) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -101,7 +112,7 @@ async function streamOpenAI(
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
       temperature: 0.7,
       max_tokens: 4096,
       stream: true,
@@ -119,7 +130,7 @@ async function streamOpenAI(
 }
 
 async function streamAnthropic(
-  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+  model: string, apiKey: string, systemPrompt: string, messages: ChatMsg[], controller: ReadableStreamDefaultController
 ) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -130,8 +141,9 @@ async function streamAnthropic(
     },
     body: JSON.stringify({
       model,
+      system: systemPrompt,
       max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
+      messages,
       stream: true,
     }),
   });
@@ -150,7 +162,7 @@ async function streamAnthropic(
 }
 
 async function streamOpenRouter(
-  model: string, apiKey: string, prompt: string, controller: ReadableStreamDefaultController
+  model: string, apiKey: string, systemPrompt: string, messages: ChatMsg[], controller: ReadableStreamDefaultController
 ) {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -160,7 +172,7 @@ async function streamOpenRouter(
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
       temperature: 0.7,
       max_tokens: 4096,
       stream: true,
@@ -187,9 +199,9 @@ export async function POST(request: NextRequest) {
     return errorResponse('Invalid request body', 400);
   }
 
-  const { provider, model, apiKey, prompt } = body;
+  const { provider, model, apiKey, systemPrompt, messages } = body;
 
-  if (!provider || !model || !apiKey || !prompt) {
+  if (!provider || !model || !apiKey || !systemPrompt || !messages?.length) {
     return errorResponse('Missing required fields', 400);
   }
 
@@ -207,10 +219,9 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        await streamFn(model, apiKey, prompt, controller);
+        await streamFn(model, apiKey, systemPrompt, messages, controller);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Analysis failed';
-        // Send error as a special prefix so the client can detect it
         controller.enqueue(encoder.encode(`__ERROR__:${message}`));
       }
       controller.close();

@@ -6,11 +6,13 @@ import ThemeToggle from './components/ThemeToggle';
 import ModelSettings from './components/ModelSettings';
 import SymbolInput from './components/SymbolInput';
 import AnalysisPanel from './components/AnalysisPanel';
+import FundamentalsPanel from './components/FundamentalsPanel';
 import { fetchStockData } from './lib/yahoo';
+import { fetchFundamentals } from './lib/fundamentals';
 import { analyzeChart } from './lib/llm';
-import { formatOHLCForPrompt } from './lib/formatData';
+import { buildSystemPrompt, buildInitialUserMessage } from './lib/formatData';
 import type { ModelConfig } from './lib/models';
-import type { CandleData, StockQuery, AnalysisState } from './lib/types';
+import type { CandleData, StockQuery, AnalysisState, ChatMessage, FundamentalsState, FundamentalsData } from './lib/types';
 
 const Chart = dynamic(() => import('./components/Chart'), {
   ssr: false,
@@ -26,6 +28,7 @@ const Chart = dynamic(() => import('./components/Chart'), {
 export default function Home() {
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [symbol, setSymbol] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisState>({
     loading: false,
     result: null,
@@ -33,10 +36,18 @@ export default function Home() {
   });
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
+  const [fundamentals, setFundamentals] = useState<FundamentalsState>({
+    loading: false,
+    data: null,
+    error: null,
+  });
   const [isDark, setIsDark] = useState(true);
 
   const modelRef = useRef<ModelConfig | null>(null);
   const apiKeyRef = useRef('');
+  const systemPromptRef = useRef('');
+  const fmpApiKeyRef = useRef('');
+  const messagesRef = useRef<ChatMessage[]>([]);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'));
@@ -47,29 +58,61 @@ export default function Home() {
     return () => observer.disconnect();
   }, []);
 
-  const handleSettingsChange = useCallback((model: ModelConfig, apiKey: string) => {
+  const handleSettingsChange = useCallback((model: ModelConfig, apiKey: string, systemPrompt: string, fmpApiKey: string) => {
     modelRef.current = model;
     apiKeyRef.current = apiKey;
+    systemPromptRef.current = systemPrompt;
+    fmpApiKeyRef.current = fmpApiKey;
   }, []);
 
   const handleAnalyze = useCallback(async (query: StockQuery) => {
     setChartError(null);
     setAnalysis({ loading: false, result: null, error: null });
+    setMessages([]);
     setChartLoading(true);
     setSymbol(query.symbol);
     setCandles([]);
+    const hasFmpKey = !!fmpApiKeyRef.current;
+    if (hasFmpKey) {
+      setFundamentals({ loading: true, data: null, error: null });
+    } else {
+      setFundamentals({ loading: false, data: null, error: null });
+    }
 
-    // Step 1: Fetch stock data
+    // Step 1: Fetch price data (and fundamentals in parallel if FMP key is set)
+    const pricePromise = fetchStockData(query);
+    const fundPromise = hasFmpKey
+      ? fetchFundamentals(query.symbol, fmpApiKeyRef.current)
+      : Promise.resolve(null as FundamentalsData | null);
+
+    const [priceResult, fundResult] = await Promise.allSettled([pricePromise, fundPromise]);
+
+    // Handle price data (always first)
     let data: CandleData[];
-    try {
-      data = await fetchStockData(query);
+    if (priceResult.status === 'fulfilled') {
+      data = priceResult.value;
       setCandles(data);
       setChartLoading(false);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch stock data';
+    } else {
+      const message = priceResult.reason instanceof Error
+        ? priceResult.reason.message
+        : 'Failed to fetch stock data';
       setChartError(message);
       setChartLoading(false);
+      setFundamentals({ loading: false, data: null, error: null });
       return;
+    }
+
+    // Handle fundamentals (non-blocking — analysis can still proceed without it)
+    let fundData: FundamentalsData | null = null;
+    if (hasFmpKey && fundResult.status === 'fulfilled' && fundResult.value) {
+      fundData = fundResult.value;
+      setFundamentals({ loading: false, data: fundData, error: null });
+    } else if (hasFmpKey && fundResult.status === 'rejected') {
+      const message = fundResult.reason instanceof Error
+        ? fundResult.reason.message
+        : 'Failed to fetch fundamentals';
+      setFundamentals({ loading: false, data: null, error: message });
     }
 
     // Step 2: Validate model settings
@@ -85,13 +128,24 @@ export default function Home() {
       return;
     }
 
-    // Step 3: Run LLM analysis with streaming (use local `data`, not stale `candles` state)
+    // Step 3: Build conversation and run LLM analysis (with fundamentals if available)
+    const sysPrompt = systemPromptRef.current || buildSystemPrompt();
+    const userMsg: ChatMessage = { role: 'user', content: buildInitialUserMessage(query.symbol, data, fundData) };
+    const newMessages: ChatMessage[] = [userMsg];
+
+    messagesRef.current = newMessages;
+    setMessages(newMessages);
     setAnalysis({ loading: true, result: '', error: null });
+
     try {
-      const prompt = formatOHLCForPrompt(query.symbol, data);
-      await analyzeChart(model, apiKey, prompt, (chunk) => {
+      let assistantText = '';
+      await analyzeChart(model, apiKey, sysPrompt, newMessages, (chunk) => {
+        assistantText += chunk;
         setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
       });
+      const updated = [...newMessages, { role: 'assistant' as const, content: assistantText }];
+      messagesRef.current = updated;
+      setMessages(updated);
       setAnalysis((prev) => ({ ...prev, loading: false }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Analysis failed';
@@ -103,7 +157,43 @@ export default function Home() {
     }
   }, []);
 
-  const isLoading = chartLoading || analysis.loading;
+  const handleFollowUp = useCallback(async (text: string) => {
+    const model = modelRef.current;
+    const apiKey = apiKeyRef.current;
+    const sysPrompt = systemPromptRef.current;
+
+    if (!model || !apiKey || !sysPrompt) {
+      setAnalysis((prev) => ({ ...prev, error: 'Please enter your API key first.' }));
+      return;
+    }
+
+    const userMsg: ChatMessage = { role: 'user', content: text };
+    const fullMessages = [...messagesRef.current, userMsg];
+    messagesRef.current = fullMessages;
+    setMessages(fullMessages);
+    setAnalysis({ loading: true, result: '', error: null });
+
+    try {
+      let assistantText = '';
+      await analyzeChart(model, apiKey, sysPrompt, fullMessages, (chunk) => {
+        assistantText += chunk;
+        setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
+      });
+      const updated = [...fullMessages, { role: 'assistant' as const, content: assistantText }];
+      messagesRef.current = updated;
+      setMessages(updated);
+      setAnalysis((prev) => ({ ...prev, loading: false }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Follow-up failed';
+      setAnalysis((prev) => ({
+        loading: false,
+        result: prev.result || null,
+        error: message,
+      }));
+    }
+  }, []);
+
+  const isLoading = chartLoading || analysis.loading || fundamentals.loading;
 
   return (
     <main className="min-h-screen">
@@ -133,7 +223,19 @@ export default function Home() {
               </div>
             )}
             <Chart data={candles} symbol={symbol} dark={isDark} />
-            <AnalysisPanel state={analysis} modelName={modelRef.current?.name} />
+            <FundamentalsPanel
+              data={fundamentals.data}
+              loading={fundamentals.loading}
+              error={fundamentals.error}
+            />
+            <AnalysisPanel
+              messages={messages}
+              streamingResult={analysis.result}
+              loading={analysis.loading}
+              error={analysis.error}
+              modelName={modelRef.current?.name}
+              onFollowUp={handleFollowUp}
+            />
           </div>
         </div>
       </div>
