@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import ThemeToggle from './components/ThemeToggle';
 import ModelSettings from './components/ModelSettings';
 import SymbolInput from './components/SymbolInput';
+import PdfUpload from './components/PdfUpload';
+import MarketClock from './components/MarketClock';
 import AnalysisPanel from './components/AnalysisPanel';
 import FundamentalsPanel from './components/FundamentalsPanel';
 import { fetchStockData } from './lib/yahoo';
@@ -200,6 +202,48 @@ export default function Home() {
     }
   }, [fetchData]);
 
+  const handlePdfAnalyze = useCallback(async (pdfText: string, prompt: string) => {
+    // Clear stock-related state
+    setCandles([]);
+    setSymbol('');
+    setFundamentals({ loading: false, data: null, error: null });
+    setChartError(null);
+
+    const model = modelRef.current;
+    const apiKey = apiKeyRef.current;
+
+    if (!model || !apiKey) {
+      setAnalysis({ loading: false, result: null, error: 'Please enter your API key first.' });
+      return;
+    }
+
+    const sysPrompt = 'You are a helpful AI assistant. Analyze the provided document and respond to the user\'s request thoroughly.';
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: `Here is the document content:\n\n${pdfText}\n\n---\n\n${prompt}`,
+    };
+    const newMessages: ChatMessage[] = [userMsg];
+
+    messagesRef.current = newMessages;
+    setMessages(newMessages);
+    setAnalysis({ loading: true, result: '', error: null });
+
+    try {
+      let assistantText = '';
+      await analyzeChart(model, apiKey, sysPrompt, newMessages, (chunk) => {
+        assistantText += chunk;
+        setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
+      });
+      const updated = [...newMessages, { role: 'assistant' as const, content: assistantText }];
+      messagesRef.current = updated;
+      setMessages(updated);
+      setAnalysis((prev) => ({ ...prev, loading: false }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Analysis failed';
+      setAnalysis((prev) => ({ loading: false, result: prev.result || null, error: message }));
+    }
+  }, []);
+
   const handleFollowUp = useCallback(async (text: string) => {
     const model = modelRef.current;
     const apiKey = apiKeyRef.current;
@@ -252,27 +296,43 @@ export default function Home() {
   }, [candles, fundamentals.data]);
 
   return (
-    <main className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
-        <div className="flex items-center justify-between mb-6 sm:mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+    <main className="h-screen flex flex-col overflow-hidden">
+      {/* Header */}
+      <header className="shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 xl:px-6 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 min-w-0">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
               Stock Pattern Analyzer
             </h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm sm:text-base">
-              AI-powered technical analysis for learning
-            </p>
+            <div className="hidden md:block">
+              <MarketClock />
+            </div>
           </div>
           <ThemeToggle />
         </div>
+      </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
-          <div className="lg:col-span-1 space-y-4">
+      {/* Body — fills remaining viewport */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="h-full grid grid-cols-1 lg:grid-cols-[260px_1fr] xl:grid-cols-[260px_1fr_400px] gap-0">
+          {/* Left sidebar */}
+          <div className="border-r border-gray-200 dark:border-gray-800 overflow-y-auto p-4 space-y-4 hidden lg:block">
             <ModelSettings onSettingsChange={handleSettingsChange} />
-            <SymbolInput onAnalyze={handleAnalyze} onGetData={handleGetData} loading={isLoading} dataLoading={dataLoading} />
+            <PdfUpload onAnalyze={handlePdfAnalyze} loading={analysis.loading} />
           </div>
 
-          <div className="lg:col-span-3 space-y-4 sm:space-y-6">
+          {/* Center content */}
+          <div className="overflow-y-auto p-4 space-y-4">
+            {/* Mobile-only: sidebar widgets inline */}
+            <div className="lg:hidden space-y-4">
+              <ModelSettings onSettingsChange={handleSettingsChange} />
+              <div className="md:hidden">
+                <MarketClock />
+              </div>
+            </div>
+
+            <SymbolInput onAnalyze={handleAnalyze} onGetData={handleGetData} loading={isLoading} dataLoading={dataLoading} />
+
             {chartError && (
               <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300">
                 {chartError}
@@ -302,6 +362,25 @@ export default function Home() {
                 )}
               </button>
             )}
+
+            {/* Mobile/tablet: PdfUpload + AnalysisPanel inline */}
+            <div className="xl:hidden space-y-4">
+              <div className="lg:hidden">
+                <PdfUpload onAnalyze={handlePdfAnalyze} loading={analysis.loading} />
+              </div>
+              <AnalysisPanel
+                messages={messages}
+                streamingResult={analysis.result}
+                loading={analysis.loading}
+                error={analysis.error}
+                modelName={modelRef.current?.name}
+                onFollowUp={handleFollowUp}
+              />
+            </div>
+          </div>
+
+          {/* Right panel — AI Analysis (xl+ only) */}
+          <div className="border-l border-gray-200 dark:border-gray-800 hidden xl:flex xl:flex-col overflow-hidden">
             <AnalysisPanel
               messages={messages}
               streamingResult={analysis.result}

@@ -54,8 +54,8 @@ export default function AnalysisPanel({ messages, streamingResult, loading, erro
   const showInput = hasCompletedAnalysis || (isStreamingNewMessage);
 
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 p-3 sm:p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="rounded-lg xl:rounded-none border border-gray-200 dark:border-gray-800 xl:border-0 bg-white dark:bg-gray-900/50 p-3 sm:p-4 flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">AI Analysis</h2>
         {loading && (
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -66,38 +66,40 @@ export default function AnalysisPanel({ messages, streamingResult, loading, erro
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300 mb-3">
+        <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300 mb-3 shrink-0">
           {error}
         </div>
       )}
 
-      {hasMessages && (
-        <div className="space-y-4 mb-3">
-          {/* Skip the first user message (raw OHLC data) — only show follow-up user messages */}
-          {completedMessages.map((msg, i) => {
-            if (i === 0 && msg.role === 'user') return null;
-            return <MessageBubble key={i} message={msg} />;
-          })}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {hasMessages && (
+          <div className="space-y-4 mb-3">
+            {/* Skip the first user message (raw OHLC data) — only show follow-up user messages */}
+            {completedMessages.map((msg, i) => {
+              if (i === 0 && msg.role === 'user') return null;
+              return <MessageBubble key={i} message={msg} />;
+            })}
 
-          {/* Streaming assistant response (not yet in messages array) */}
-          {isStreamingNewMessage && (
-            <div className="analysis-content text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-              <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{streamingResult}</Markdown>
-            </div>
-          )}
+            {/* Streaming assistant response (not yet in messages array) */}
+            {isStreamingNewMessage && (
+              <div className="analysis-content text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                <Markdown remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]} rehypePlugins={[rehypeKatex]}>{streamingResult}</Markdown>
+              </div>
+            )}
 
-          <div ref={bottomRef} />
-        </div>
-      )}
+            <div ref={bottomRef} />
+          </div>
+        )}
 
-      {!hasMessages && !loading && !error && (
-        <p className="text-gray-400 dark:text-gray-500 py-8 text-center">
-          Analysis will appear here after you click Analyze
-        </p>
-      )}
+        {!hasMessages && !loading && !error && (
+          <p className="text-gray-400 dark:text-gray-500 py-8 text-center">
+            Analysis will appear here after you click Analyze
+          </p>
+        )}
+      </div>
 
       {showInput && (
-        <form onSubmit={handleSubmit} className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+        <form onSubmit={handleSubmit} className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 shrink-0">
           <input
             type="text"
             value={input}
@@ -132,7 +134,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className="analysis-content text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-      <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{message.content}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]} rehypePlugins={[rehypeKatex]}>{message.content}</Markdown>
     </div>
   );
 }
