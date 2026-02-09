@@ -182,11 +182,6 @@ export default function PdfUpload({ onAnalyze, loading }: PdfUploadProps) {
       setError("Please select a PDF file.");
       return;
     }
-    if (file.size > 11 * 1024 * 1024) {
-      setError("File too large (max 10 MB).");
-      return;
-    }
-
     setError(null);
     setParsing(true);
     setPdf(null);
@@ -332,7 +327,7 @@ export default function PdfUpload({ onAnalyze, loading }: PdfUploadProps) {
                 Drop a PDF here or click to browse
               </span>
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                Max 10 MB
+                PDF files only
               </span>
               <input
                 ref={inputRef}
