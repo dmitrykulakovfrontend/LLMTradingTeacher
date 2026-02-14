@@ -1,6 +1,10 @@
 "use client";
-import ReactJsonView from "@microlink/react-json-view";
+import dynamic from "next/dynamic";
 import { useEffect, useRef } from "react";
+
+const ReactJsonView = dynamic(() => import("@microlink/react-json-view"), {
+  ssr: false,
+});
 
 type JsonViewProps = { header: string; data: object };
 
