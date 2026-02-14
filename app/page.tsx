@@ -22,6 +22,7 @@ import {
   QuoteSummaryModules,
 } from "yahoo-finance2/modules/quoteSummary";
 import { fetchTest } from "./lib/test";
+import JsonView from "./components/JsonView";
 
 const Chart = dynamic(() => import("./components/Chart"), {
   ssr: false,
@@ -257,7 +258,7 @@ export default function Home() {
             )}
             <Chart data={candles} symbol={symbol} dark={isDark} />
 
-            <div className="border-l border-gray-200 dark:border-gray-800 hidden xl:flex xl:flex-col overflow-hidden p-4 space-y-3">
+            <div className="border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden p-4 space-y-3">
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Quote Module
               </label>
@@ -274,12 +275,15 @@ export default function Home() {
                   </option>
                 ))}
               </select>
+
               <pre className="flex-1 overflow-auto rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-3 text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                {testQuery.isLoading
-                  ? "Loading..."
-                  : testQuery.data
-                    ? JSON.stringify(testQuery.data, null, 2)
-                    : "error?"}
+                {testQuery.isLoading ? (
+                  "Loading..."
+                ) : testQuery.data ? (
+                  <JsonView data={testQuery.data} header={module} />
+                ) : (
+                  "error?"
+                )}
               </pre>
             </div>
             <FundamentalsPanel

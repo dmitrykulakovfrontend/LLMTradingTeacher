@@ -5,7 +5,10 @@
 body {
   background: #ffffff;
   color: #111827;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 .dark body {
@@ -28,9 +31,15 @@ body {
 .dark .analysis-content h4 {
   color: #f3f4f6;
 }
-.analysis-content h1 { font-size: 1.25rem; }
-.analysis-content h2 { font-size: 1.125rem; }
-.analysis-content h3 { font-size: 1rem; }
+.analysis-content h1 {
+  font-size: 1.25rem;
+}
+.analysis-content h2 {
+  font-size: 1.125rem;
+}
+.analysis-content h3 {
+  font-size: 1rem;
+}
 
 .analysis-content p {
   margin-bottom: 0.75em;
@@ -49,8 +58,12 @@ body {
   margin-left: 1.5em;
   margin-bottom: 0.75em;
 }
-.analysis-content ul { list-style-type: disc; }
-.analysis-content ol { list-style-type: decimal; }
+.analysis-content ul {
+  list-style-type: disc;
+}
+.analysis-content ol {
+  list-style-type: decimal;
+}
 
 .analysis-content li {
   margin-bottom: 0.35em;
@@ -107,4 +120,33 @@ body {
 }
 .dark .analysis-content th {
   background: #1f2937;
+}
+
+/* @microlink/react-json-view */
+
+.data-type-label {
+  pointer-events: none;
+  user-select: none;
+}
+.object-meta-data {
+  user-select: none;
+}
+
+.copy-to-clipboard-container {
+  display: none !important;
+}
+
+/* Show copy icon only for the directly hovered row (not parents) */
+.variable-row:hover:not(:has(.variable-row:hover)) .copy-to-clipboard-container,
+.object-key-val:hover:not(:has(.object-key-val:hover)):not(
+    :has(.variable-row:hover)
+  )
+  > .object-meta-data
+  .copy-to-clipboard-container {
+  display: inline !important;
+  position: absolute !important;
+}
+
+.object-meta-data {
+  padding: 2px 6px;
 }
