@@ -1,3 +1,5 @@
+import { FundamentalsTimeSeries_Types } from "yahoo-finance2/modules/fundamentalsTimeSeries";
+
 export interface CandleData {
   time: string | number;
   open: number;
@@ -7,9 +9,26 @@ export interface CandleData {
   volume?: number;
 }
 
+export type Timeframe =
+  | "1d"
+  | "5d"
+  | "1mo"
+  | "3mo"
+  | "6mo"
+  | "1y"
+  | "2y"
+  | "5y"
+  | "10y"
+  | "ytd"
+  | "max";
+export type Interval = "5m" | "15m" | "1h" | "1d" | "1wk" | "1mo";
 
-export type Timeframe = '1d' | '5d' | '1mo' | '3mo';
-export type Interval = '5m' | '15m' | '1h' | '1d';
+export type FundamentalsTimeSeriesModule =
+  | "financials"
+  | "balance-sheet"
+  | "cash-flow"
+  | "all";
+export type FundamentalsTimeSeriesType = "quarterly" | "annual" | "trailing";
 
 export interface StockQuery {
   symbol: string;
@@ -18,10 +37,9 @@ export interface StockQuery {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
-
 
 // --- Financial Modeling Prep (FMP) API types ---
 
@@ -70,6 +88,8 @@ export interface FmpFundamentalsResponse {
   balance: FmpBalanceSheet[];
   cashflow: FmpCashFlow[];
   quote: FmpQuote[];
+  companyName?: string;
+  description?: string;
 }
 
 // --- Calculated fundamentals ---
@@ -93,9 +113,53 @@ export interface AnalystTargets {
 
 export interface FundamentalsData {
   symbol: string;
+  companyName?: string;
+  description?: string;
   currency: string;
   fetchedAt: string;
   metrics: FundamentalMetric[];
   analystTargets: AnalystTargets | null;
   rawResponse?: FmpFundamentalsResponse;
+}
+
+// --- ETF Overlap Comparator types ---
+
+export interface EtfHolding {
+  symbol: string;
+  holdingName: string;
+  holdingPercent: number;
+}
+
+export interface EtfHoldingsResponse {
+  symbol: string;
+  holdings: EtfHolding[];
+}
+
+export interface PairwiseOverlap {
+  etfA: string;
+  etfB: string;
+  overlapPercent: number;
+}
+
+export interface OverlapHoldingRow {
+  symbol: string;
+  holdingName: string;
+  weights: Record<string, number>;
+  etfCount: number;
+  averageExposure: number;
+}
+
+export interface DiversificationWarning {
+  type: "single_stock_concentration" | "top_n_concentration";
+  message: string;
+  symbols: string[];
+  value: number;
+}
+
+export interface EtfOverlapResult {
+  etfs: string[];
+  pairwiseOverlaps: PairwiseOverlap[];
+  overlappingHoldings: OverlapHoldingRow[];
+  allHoldings: OverlapHoldingRow[];
+  warnings: DiversificationWarning[];
 }

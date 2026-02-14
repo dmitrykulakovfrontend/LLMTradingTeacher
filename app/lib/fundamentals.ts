@@ -202,6 +202,8 @@ function parseFundamentals(symbol: string, data: FmpFundamentalsResponse): Funda
 
   return {
     symbol,
+    companyName: data.companyName,
+    description: data.description,
     currency: 'USD',
     fetchedAt: new Date().toISOString(),
     metrics,

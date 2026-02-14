@@ -16,13 +16,18 @@ import { useStockData } from "./hooks/useStockData";
 import { useFundamentals } from "./hooks/useFundamentals";
 import { useAnalysis } from "./hooks/useAnalysis";
 import type { ModelConfig } from "./lib/models";
-import type { StockQuery } from "./lib/types";
+import type {
+  FundamentalsTimeSeriesModule,
+  FundamentalsTimeSeriesType,
+  StockQuery,
+} from "./lib/types";
 import {
   quoteSummary_modules,
   QuoteSummaryModules,
 } from "yahoo-finance2/modules/quoteSummary";
-import { fetchTest } from "./lib/test";
-import JsonView from "./components/JsonView";
+import DebugData from "./components/DebugData";
+import Collapseable from "./components/Collapseable";
+import EtfOverlap from "./components/EtfOverlap";
 
 const Chart = dynamic(() => import("./components/Chart"), {
   ssr: false,
@@ -41,7 +46,9 @@ export default function Home() {
   const [symbol, setSymbol] = useState("AAPL");
   const [activeQuery, setActiveQuery] = useState<StockQuery | null>(null);
   const [isDark, setIsDark] = useState(true);
-  const [module, setModule] = useState<QuoteSummaryModules>("assetProfile");
+  const [module, setModule] =
+    useState<FundamentalsTimeSeriesModule>("financials");
+  const [type, setType] = useState<FundamentalsTimeSeriesType>("annual");
 
   const modelRef = useRef<ModelConfig | null>(null);
   const apiKeyRef = useRef("");
@@ -67,13 +74,6 @@ export default function Home() {
 
   const candles = stockQuery.data ?? [];
 
-  const testQuery = useQuery({
-    queryKey: ["test", symbol, module],
-    queryFn: () => fetchTest(symbol!, module),
-    enabled: !!symbol,
-    staleTime: 5 * 60 * 1000,
-    placeholderData: (prev) => prev,
-  });
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
     const observer = new MutationObserver(() => {
@@ -257,40 +257,25 @@ export default function Home() {
               </div>
             )}
             <Chart data={candles} symbol={symbol} dark={isDark} />
-
-            <div className="border-l border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden p-4 space-y-3">
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Quote Module
-              </label>
-              <select
-                value={module}
-                onChange={(e) =>
-                  setModule(e.target.value as QuoteSummaryModules)
-                }
-                className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-              >
-                {quoteSummary_modules.map((module) => (
-                  <option key={module} value={module}>
-                    {module}
-                  </option>
-                ))}
-              </select>
-
-              <pre className="flex-1 overflow-auto rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-3 text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                {testQuery.isLoading ? (
-                  "Loading..."
-                ) : testQuery.data ? (
-                  <JsonView data={testQuery.data} header={module} />
-                ) : (
-                  "error?"
-                )}
-              </pre>
-            </div>
-            <FundamentalsPanel
-              data={fundQuery.data ?? null}
-              loading={fundQuery.isLoading}
-              error={fundQuery.error?.message ?? null}
-            />
+            <Collapseable title="Data Explorer">
+              <DebugData
+                symbol={symbol}
+                module={module}
+                setModule={setModule}
+                type={type}
+                setType={setType}
+              />
+            </Collapseable>
+            <Collapseable title="Fundamentals">
+              <FundamentalsPanel
+                data={fundQuery.data ?? null}
+                loading={fundQuery.isLoading}
+                error={fundQuery.error?.message ?? null}
+              />
+            </Collapseable>
+            <Collapseable title="ETF Overlap Comparator">
+              <EtfOverlap />
+            </Collapseable>
             {hasData && (
               <button
                 onClick={handleCopyAll}

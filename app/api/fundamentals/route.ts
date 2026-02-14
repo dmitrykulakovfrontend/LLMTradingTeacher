@@ -63,48 +63,110 @@ async function fetchViaFmp(symbol: string, apiKey: string) {
   return { income, balance, cashflow, quote };
 }
 
+// Helper to safely read a numeric field from a fundamentalsTimeSeries entry
+function tsNum(
+  entry: Record<string, unknown> | undefined,
+  key: string,
+): number {
+  if (!entry) return 0;
+  const v = entry[key];
+  return typeof v === "number" ? v : 0;
+}
+
+// Convert a fundamentalsTimeSeries date (unix seconds) to "YYYY-MM-DD"
+function tsDate(entry: Record<string, unknown>): string {
+  const d = entry.date;
+  if (typeof d === "number") {
+    return new Date(d * 1000).toISOString().split("T")[0];
+  }
+  return String(d ?? "");
+}
+
+function tsFiscalYear(entry: Record<string, unknown>): string {
+  const d = entry.date;
+  if (typeof d === "number") {
+    return String(new Date(d * 1000).getFullYear());
+  }
+  return "";
+}
+
 async function fetchViaYahoo(symbol: string) {
-  const result = await yf.quoteSummary(symbol, {
-    modules: [
-      "financialData",
-      "defaultKeyStatistics",
-      "incomeStatementHistory",
-      "balanceSheetHistory",
-      "cashflowStatementHistory",
-      "summaryDetail",
-      "summaryProfile",
-    ],
+  // Two parallel calls:
+  // 1. quoteSummary for metadata + current metrics (NOT deprecated)
+  // 2. fundamentalsTimeSeries for financial statements (replaces deprecated *History modules)
+  const [summaryResult, tsResult] = await Promise.all([
+    yf.quoteSummary(symbol, {
+      modules: [
+        "quoteType",
+        "summaryProfile",
+        "financialData",
+        "defaultKeyStatistics",
+      ],
+    }),
+    yf.fundamentalsTimeSeries(
+      symbol,
+      {
+        module: "all",
+        period1: new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000),
+        type: "annual",
+      },
+      { validateResult: false },
+    ),
+  ]);
+
+  const fd = summaryResult.financialData;
+  console.log("summaryResult", summaryResult);
+  const ks = summaryResult.defaultKeyStatistics;
+  const companyName =
+    summaryResult.quoteType?.longName ||
+    summaryResult.quoteType?.shortName ||
+    undefined;
+  const description =
+    summaryResult.summaryProfile?.longBusinessSummary || undefined;
+
+  // Separate fundamentalsTimeSeries entries by type
+  const tsEntries = (tsResult ?? []) as Record<string, unknown>[];
+  const financialsEntries = tsEntries
+    .filter(
+      (e) =>
+        e.totalRevenue !== undefined ||
+        e.netIncome !== undefined ||
+        e.grossProfit !== undefined,
+    )
+    .sort((a, b) => (Number(b.date) || 0) - (Number(a.date) || 0));
+
+  const balanceEntries = tsEntries
+    .filter(
+      (e) => e.totalAssets !== undefined || e.stockholdersEquity !== undefined,
+    )
+    .sort((a, b) => (Number(b.date) || 0) - (Number(a.date) || 0));
+
+  const cashflowEntries = tsEntries
+    .filter(
+      (e) => e.operatingCashFlow !== undefined || e.freeCashFlow !== undefined,
+    )
+    .sort((a, b) => (Number(b.date) || 0) - (Number(a.date) || 0));
+
+  // Map financials to FMP income statement shape (most recent 2 for YoY growth)
+  const income = financialsEntries.slice(0, 2).map((entry) => {
+    const revenue = tsNum(entry, "totalRevenue");
+    const grossProfit = tsNum(entry, "grossProfit");
+    return {
+      date: tsDate(entry),
+      fiscalYear: tsFiscalYear(entry),
+      period: "FY",
+      revenue,
+      costOfRevenue: tsNum(entry, "costOfRevenue"),
+      grossProfit,
+      grossProfitRatio: revenue !== 0 ? grossProfit / revenue : 0,
+      operatingIncome: tsNum(entry, "operatingIncome"),
+      netIncome: tsNum(entry, "netIncome"),
+      eps: tsNum(entry, "basicEPS"),
+      epsDiluted: tsNum(entry, "dilutedEPS"),
+    };
   });
 
-  const fd = result.financialData;
-  const ks = result.defaultKeyStatistics;
-  const isHist = result.incomeStatementHistory?.incomeStatementHistory ?? [];
-  const bsHist = result.balanceSheetHistory?.balanceSheetStatements ?? [];
-  const cfHist = result.cashflowStatementHistory?.cashflowStatements ?? [];
-  console.dir({ detail: result.summaryDetail, profile: result.summaryProfile });
-
-  // Map to FMP-compatible response shape
-  const income = isHist.slice(0, 2).map((stmt) => ({
-    date:
-      stmt.endDate instanceof Date
-        ? stmt.endDate.toISOString().split("T")[0]
-        : String(stmt.endDate),
-    fiscalYear:
-      stmt.endDate instanceof Date ? String(stmt.endDate.getFullYear()) : "",
-    period: "FY",
-    revenue: stmt.totalRevenue ?? fd?.totalRevenue ?? 0,
-    costOfRevenue:
-      stmt.costOfRevenue ??
-      (fd ? (fd.totalRevenue ?? 0) - (fd.grossProfits ?? 0) : 0),
-    grossProfit: stmt.grossProfit ?? fd?.grossProfits ?? 0,
-    grossProfitRatio: fd?.grossMargins ?? 0,
-    operatingIncome: stmt.ebit ?? fd?.ebitda ?? 0,
-    netIncome: stmt.netIncome ?? ks?.netIncomeToCommon ?? 0,
-    eps: ks?.trailingEps ?? 0,
-    epsDiluted: ks?.trailingEps ?? 0,
-  }));
-
-  // If no statement history, build from financialData
+  // Fallback: if fundamentalsTimeSeries returned no income data, use financialData
   if (income.length === 0 && fd) {
     income.push({
       date: new Date().toISOString().split("T")[0],
@@ -121,38 +183,19 @@ async function fetchViaYahoo(symbol: string) {
     });
   }
 
-  const balance = bsHist.slice(0, 1).map((stmt) => {
-    const netIncome = ks?.netIncomeToCommon ?? 0;
-    const roe = fd?.returnOnEquity ?? 0;
-    const roa = fd?.returnOnAssets ?? 0;
-    const equity = roe !== 0 ? netIncome / roe : 0;
-    const totalAssets = roa !== 0 ? netIncome / roa : 0;
-    const de = fd?.debtToEquity ?? 0;
-    const totalLiabilities = de !== 0 ? (de / 100) * equity : 0;
+  // Map balance sheet entries (most recent 1)
+  const balance = balanceEntries.slice(0, 1).map((entry) => ({
+    date: tsDate(entry),
+    fiscalYear: tsFiscalYear(entry),
+    period: "FY",
+    totalAssets: tsNum(entry, "totalAssets"),
+    totalLiabilities: tsNum(entry, "totalLiabilitiesNetMinorityInterest"),
+    totalStockholdersEquity: tsNum(entry, "stockholdersEquity"),
+    totalDebt: tsNum(entry, "totalDebt"),
+    cashAndCashEquivalents: tsNum(entry, "cashAndCashEquivalents"),
+  }));
 
-    const raw = stmt as unknown as Record<string, unknown>;
-    return {
-      date:
-        stmt.endDate instanceof Date
-          ? stmt.endDate.toISOString().split("T")[0]
-          : String(stmt.endDate),
-      fiscalYear:
-        stmt.endDate instanceof Date ? String(stmt.endDate.getFullYear()) : "",
-      period: "FY",
-      totalAssets:
-        typeof raw.totalAssets === "number" ? raw.totalAssets : totalAssets,
-      totalLiabilities:
-        typeof raw.totalLiab === "number" ? raw.totalLiab : totalLiabilities,
-      totalStockholdersEquity:
-        typeof raw.totalStockholderEquity === "number"
-          ? raw.totalStockholderEquity
-          : equity,
-      totalDebt: fd?.totalDebt ?? 0,
-      cashAndCashEquivalents: fd?.totalCash ?? 0,
-    };
-  });
-
-  // If no balance sheet history, compute from ratios
+  // Fallback: compute from financialData ratios
   if (balance.length === 0 && fd) {
     const netIncome = ks?.netIncomeToCommon ?? 0;
     const roe = fd.returnOnEquity ?? 0;
@@ -174,28 +217,17 @@ async function fetchViaYahoo(symbol: string) {
     });
   }
 
-  const cashflow = cfHist.slice(0, 1).map((stmt) => {
-    const raw = stmt as unknown as Record<string, unknown>;
-    return {
-      date:
-        stmt.endDate instanceof Date
-          ? stmt.endDate.toISOString().split("T")[0]
-          : String(stmt.endDate),
-      fiscalYear:
-        stmt.endDate instanceof Date ? String(stmt.endDate.getFullYear()) : "",
-      period: "FY",
-      operatingCashFlow:
-        typeof raw.totalCashFromOperatingActivities === "number"
-          ? raw.totalCashFromOperatingActivities
-          : (fd?.operatingCashflow ?? 0),
-      capitalExpenditure:
-        typeof raw.capitalExpenditures === "number"
-          ? raw.capitalExpenditures
-          : (fd?.operatingCashflow ?? 0) - (fd?.freeCashflow ?? 0),
-      freeCashFlow: fd?.freeCashflow ?? 0,
-    };
-  });
+  // Map cash flow entries (most recent 1)
+  const cashflow = cashflowEntries.slice(0, 1).map((entry) => ({
+    date: tsDate(entry),
+    fiscalYear: tsFiscalYear(entry),
+    period: "FY",
+    operatingCashFlow: tsNum(entry, "operatingCashFlow"),
+    capitalExpenditure: tsNum(entry, "capitalExpenditure"),
+    freeCashFlow: tsNum(entry, "freeCashFlow"),
+  }));
 
+  // Fallback
   if (cashflow.length === 0 && fd) {
     cashflow.push({
       date: new Date().toISOString().split("T")[0],
@@ -207,6 +239,7 @@ async function fetchViaYahoo(symbol: string) {
     });
   }
 
+  // Quote data — still from quoteSummary (financialData + defaultKeyStatistics)
   const quote = [
     {
       symbol,
@@ -218,7 +251,7 @@ async function fetchViaYahoo(symbol: string) {
     },
   ];
 
-  return { income, balance, cashflow, quote };
+  return { income, balance, cashflow, quote, companyName, description };
 }
 
 export async function POST(request: NextRequest) {

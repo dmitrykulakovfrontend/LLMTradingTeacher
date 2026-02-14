@@ -1,36 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
 import { QuoteSummaryModules } from "yahoo-finance2/modules/quoteSummary";
+import {
+  FundamentalsTimeSeriesModule,
+  FundamentalsTimeSeriesType,
+  Timeframe,
+} from "../../lib/types";
+import { rangeToPeriod1 } from "@/app/lib/utils";
 
 export const runtime = "nodejs";
 
 const yf = new YahooFinance();
 
-async function fetchViaYahoo(symbol: string, module: QuoteSummaryModules) {
-  const result = await yf.quoteSummary(symbol, {
-    modules: [module],
-  });
-
-  const data = result[module];
-
-  return { data };
-}
-
 export async function POST(request: NextRequest) {
-  let body: { symbol: string; module: QuoteSummaryModules };
+  let body: {
+    symbol: string;
+    module: FundamentalsTimeSeriesModule;
+    range: string;
+    type: FundamentalsTimeSeriesType;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { symbol, module } = body;
+  const { symbol, module, range, type } = body;
 
   if (!symbol) {
     return NextResponse.json({ error: "symbol is required" }, { status: 400 });
   }
   if (!module) {
     return NextResponse.json({ error: "module is required" }, { status: 400 });
+  }
+  if (!range) {
+    return NextResponse.json({ error: "range is required" }, { status: 400 });
+  }
+  if (!type) {
+    return NextResponse.json({ error: "type is required" }, { status: 400 });
   }
 
   const sanitized = symbol.replace(/[^a-zA-Z0-9.\-^]/g, "");
@@ -39,9 +46,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const data = await fetchViaYahoo(sanitized, module);
+    const result = await yf.fundamentalsTimeSeries(
+      symbol,
+      {
+        module,
+        period1: rangeToPeriod1(range as Timeframe),
+        type,
+      },
+      { validateResult: false },
+    );
 
-    return NextResponse.json(data);
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error(err);
     const message =
