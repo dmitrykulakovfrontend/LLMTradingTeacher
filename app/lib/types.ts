@@ -7,29 +7,6 @@ export interface CandleData {
   volume?: number;
 }
 
-export interface YahooChartResponse {
-  chart: {
-    result: Array<{
-      meta: {
-        symbol: string;
-        currency: string;
-        exchangeName: string;
-        regularMarketPrice: number;
-      };
-      timestamp: number[];
-      indicators: {
-        quote: Array<{
-          open: (number | null)[];
-          high: (number | null)[];
-          low: (number | null)[];
-          close: (number | null)[];
-          volume: (number | null)[];
-        }>;
-      };
-    }>;
-    error: null | { code: string; description: string };
-  };
-}
 
 export type Timeframe = '1d' | '5d' | '1mo' | '3mo';
 export type Interval = '5m' | '15m' | '1h' | '1d';
@@ -45,11 +22,6 @@ export interface ChatMessage {
   content: string;
 }
 
-export interface AnalysisState {
-  loading: boolean;
-  result: string | null;
-  error: string | null;
-}
 
 // --- Financial Modeling Prep (FMP) API types ---
 
@@ -126,10 +98,4 @@ export interface FundamentalsData {
   metrics: FundamentalMetric[];
   analystTargets: AnalystTargets | null;
   rawResponse?: FmpFundamentalsResponse;
-}
-
-export interface FundamentalsState {
-  loading: boolean;
-  data: FundamentalsData | null;
-  error: string | null;
 }

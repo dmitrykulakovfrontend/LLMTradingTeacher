@@ -1,22 +1,29 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import dynamic from 'next/dynamic';
-import ThemeToggle from './components/ThemeToggle';
-import ModelSettings from './components/ModelSettings';
-import SymbolInput from './components/SymbolInput';
-import PdfUpload from './components/PdfUpload';
-import MarketClock from './components/MarketClock';
-import AnalysisPanel from './components/AnalysisPanel';
-import FundamentalsPanel from './components/FundamentalsPanel';
-import { fetchStockData } from './lib/yahoo';
-import { fetchFundamentals } from './lib/fundamentals';
-import { analyzeChart } from './lib/llm';
-import { buildSystemPrompt, buildInitialUserMessage } from './lib/formatData';
-import type { ModelConfig } from './lib/models';
-import type { CandleData, StockQuery, AnalysisState, ChatMessage, FundamentalsState, FundamentalsData } from './lib/types';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
+import ThemeToggle from "./components/ThemeToggle";
+import ModelSettings from "./components/ModelSettings";
+import SymbolInput from "./components/SymbolInput";
+import PdfUpload from "./components/PdfUpload";
+import MarketClock from "./components/MarketClock";
+import AnalysisPanel from "./components/AnalysisPanel";
+import FundamentalsPanel from "./components/FundamentalsPanel";
+import { fetchStockData } from "./lib/yahoo";
+import { fetchFundamentals } from "./lib/fundamentals";
+import { useStockData } from "./hooks/useStockData";
+import { useFundamentals } from "./hooks/useFundamentals";
+import { useAnalysis } from "./hooks/useAnalysis";
+import type { ModelConfig } from "./lib/models";
+import type { StockQuery } from "./lib/types";
+import {
+  quoteSummary_modules,
+  QuoteSummaryModules,
+} from "yahoo-finance2/modules/quoteSummary";
+import { fetchTest } from "./lib/test";
 
-const Chart = dynamic(() => import('./components/Chart'), {
+const Chart = dynamic(() => import("./components/Chart"), {
   ssr: false,
   loading: () => (
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 p-4">
@@ -27,273 +34,176 @@ const Chart = dynamic(() => import('./components/Chart'), {
   ),
 });
 
-function queryKey(q: StockQuery): string {
-  return `${q.symbol}|${q.range}|${q.interval}`;
-}
-
 export default function Home() {
-  const [candles, setCandles] = useState<CandleData[]>([]);
-  const [symbol, setSymbol] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [analysis, setAnalysis] = useState<AnalysisState>({
-    loading: false,
-    result: null,
-    error: null,
-  });
-  const [chartLoading, setChartLoading] = useState(false);
-  const [chartError, setChartError] = useState<string | null>(null);
-  const [fundamentals, setFundamentals] = useState<FundamentalsState>({
-    loading: false,
-    data: null,
-    error: null,
-  });
+  const queryClient = useQueryClient();
+
+  const [symbol, setSymbol] = useState("AAPL");
+  const [activeQuery, setActiveQuery] = useState<StockQuery | null>(null);
   const [isDark, setIsDark] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
+  const [module, setModule] = useState<QuoteSummaryModules>("assetProfile");
 
   const modelRef = useRef<ModelConfig | null>(null);
-  const apiKeyRef = useRef('');
-  const systemPromptRef = useRef('');
-  const fmpApiKeyRef = useRef('');
-  const messagesRef = useRef<ChatMessage[]>([]);
+  const apiKeyRef = useRef("");
+  const systemPromptRef = useRef("");
+  const fmpApiKeyRef = useRef("");
 
-  // Cache for fetched data so Analyze can reuse it
-  const cachedQueryRef = useRef<string>('');
-  const cachedCandlesRef = useRef<CandleData[]>([]);
-  const cachedFundRef = useRef<FundamentalsData | null>(null);
+  // TanStack Query hooks
+  const stockQuery = useStockData(activeQuery);
+  const fundQuery = useFundamentals(
+    activeQuery?.symbol ?? null,
+    fmpApiKeyRef.current || null,
+  );
+  const {
+    messages,
+    streamingText,
+    isLoading: analysisLoading,
+    error: analysisError,
+    analyze,
+    followUp,
+    analyzePdf,
+    reset: resetAnalysis,
+  } = useAnalysis();
 
+  const candles = stockQuery.data ?? [];
+
+  const testQuery = useQuery({
+    queryKey: ["test", symbol, module],
+    queryFn: () => fetchTest(symbol!, module),
+    enabled: !!symbol,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
   useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'));
+    setIsDark(document.documentElement.classList.contains("dark"));
     const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains('dark'));
+      setIsDark(document.documentElement.classList.contains("dark"));
     });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
     return () => observer.disconnect();
   }, []);
 
-  const handleSettingsChange = useCallback((model: ModelConfig, apiKey: string, systemPrompt: string, fmpApiKey: string) => {
-    modelRef.current = model;
-    apiKeyRef.current = apiKey;
-    systemPromptRef.current = systemPrompt;
-    fmpApiKeyRef.current = fmpApiKey;
-  }, []);
+  const handleSettingsChange = useCallback(
+    (
+      model: ModelConfig,
+      apiKey: string,
+      systemPrompt: string,
+      fmpApiKey: string,
+    ) => {
+      modelRef.current = model;
+      apiKeyRef.current = apiKey;
+      systemPromptRef.current = systemPrompt;
+      fmpApiKeyRef.current = fmpApiKey;
+    },
+    [],
+  );
 
-  // Shared data-fetching logic. Returns { candles, fundData } or null on failure.
-  const fetchData = useCallback(async (query: StockQuery): Promise<{ candles: CandleData[]; fundData: FundamentalsData | null } | null> => {
-    setChartError(null);
-    setChartLoading(true);
-    setSymbol(query.symbol);
-    setCandles([]);
-    const hasFmpKey = !!fmpApiKeyRef.current;
-    if (hasFmpKey) {
-      setFundamentals({ loading: true, data: null, error: null });
-    } else {
-      setFundamentals({ loading: false, data: null, error: null });
-    }
+  const handleGetData = useCallback(
+    (query: StockQuery) => {
+      resetAnalysis();
+      setActiveQuery(query);
+    },
+    [resetAnalysis],
+  );
 
-    const pricePromise = fetchStockData(query);
-    const fundPromise = hasFmpKey
-      ? fetchFundamentals(query.symbol, fmpApiKeyRef.current)
-      : Promise.resolve(null as FundamentalsData | null);
+  const handleAnalyze = useCallback(
+    async (query: StockQuery) => {
+      resetAnalysis();
+      setActiveQuery(query);
 
-    const [priceResult, fundResult] = await Promise.allSettled([pricePromise, fundPromise]);
+      const model = modelRef.current;
+      const apiKey = apiKeyRef.current;
 
-    let data: CandleData[];
-    if (priceResult.status === 'fulfilled') {
-      data = priceResult.value;
-      setCandles(data);
-      setChartLoading(false);
-    } else {
-      const message = priceResult.reason instanceof Error
-        ? priceResult.reason.message
-        : 'Failed to fetch stock data';
-      setChartError(message);
-      setChartLoading(false);
-      setFundamentals({ loading: false, data: null, error: null });
-      return null;
-    }
+      if (!model || !apiKey) {
+        return;
+      }
 
-    let fundData: FundamentalsData | null = null;
-    if (hasFmpKey && fundResult.status === 'fulfilled' && fundResult.value) {
-      fundData = fundResult.value;
-      setFundamentals({ loading: false, data: fundData, error: null });
-    } else if (hasFmpKey && fundResult.status === 'rejected') {
-      const message = fundResult.reason instanceof Error
-        ? fundResult.reason.message
-        : 'Failed to fetch fundamentals';
-      setFundamentals({ loading: false, data: null, error: message });
-    }
+      try {
+        const stockData = await queryClient.ensureQueryData({
+          queryKey: ["stockData", query.symbol, query.range, query.interval],
+          queryFn: () => fetchStockData(query),
+          staleTime: 2 * 60 * 1000,
+        });
 
-    // Cache for reuse
-    cachedQueryRef.current = queryKey(query);
-    cachedCandlesRef.current = data;
-    cachedFundRef.current = fundData;
+        let fundData = null;
+        try {
+          fundData = await queryClient.ensureQueryData({
+            queryKey: [
+              "fundamentals",
+              query.symbol,
+              fmpApiKeyRef.current || "yahoo",
+            ],
+            queryFn: () =>
+              fetchFundamentals(query.symbol, fmpApiKeyRef.current || null),
+            staleTime: 5 * 60 * 1000,
+          });
+        } catch {
+          // Fundamentals failure is non-fatal
+        }
 
-    return { candles: data, fundData };
-  }, []);
+        analyze(
+          model,
+          apiKey,
+          systemPromptRef.current,
+          query.symbol,
+          stockData,
+          fundData,
+        );
+      } catch {
+        // Stock data fetch failed — React Query will also show the error
+      }
+    },
+    [queryClient, resetAnalysis, analyze],
+  );
 
-  const handleGetData = useCallback(async (query: StockQuery) => {
-    setDataLoading(true);
-    setAnalysis({ loading: false, result: null, error: null });
-    setMessages([]);
-    await fetchData(query);
-    setDataLoading(false);
-  }, [fetchData]);
+  const handlePdfAnalyze = useCallback(
+    (pdfText: string, prompt: string) => {
+      setActiveQuery(null);
 
-  const handleAnalyze = useCallback(async (query: StockQuery) => {
-    setAnalysis({ loading: false, result: null, error: null });
-    setMessages([]);
+      const model = modelRef.current;
+      const apiKey = apiKeyRef.current;
 
-    // Reuse cached data if query matches
-    let data: CandleData[];
-    let fundData: FundamentalsData | null;
-    const key = queryKey(query);
+      if (!model || !apiKey) {
+        return;
+      }
 
-    if (cachedQueryRef.current === key && cachedCandlesRef.current.length > 0) {
-      data = cachedCandlesRef.current;
-      fundData = cachedFundRef.current;
-      setSymbol(query.symbol);
-      // Data already displayed — no need to refetch
-    } else {
-      const result = await fetchData(query);
-      if (!result) return;
-      data = result.candles;
-      fundData = result.fundData;
-    }
+      analyzePdf(model, apiKey, pdfText, prompt);
+    },
+    [analyzePdf],
+  );
 
-    // Validate model settings
-    const model = modelRef.current;
-    const apiKey = apiKeyRef.current;
+  const handleFollowUp = useCallback(
+    (text: string) => {
+      const model = modelRef.current;
+      const apiKey = apiKeyRef.current;
+      const sysPrompt = systemPromptRef.current;
 
-    if (!model || !apiKey) {
-      setAnalysis({
-        loading: false,
-        result: null,
-        error: 'Please enter your API key first.',
-      });
-      return;
-    }
+      if (!model || !apiKey || !sysPrompt) {
+        return;
+      }
 
-    // Build conversation and run LLM analysis
-    const sysPrompt = systemPromptRef.current || buildSystemPrompt();
-    const userMsg: ChatMessage = { role: 'user', content: buildInitialUserMessage(query.symbol, data, fundData) };
-    const newMessages: ChatMessage[] = [userMsg];
+      followUp(model, apiKey, sysPrompt, text);
+    },
+    [followUp],
+  );
 
-    messagesRef.current = newMessages;
-    setMessages(newMessages);
-    setAnalysis({ loading: true, result: '', error: null });
-
-    try {
-      let assistantText = '';
-      await analyzeChart(model, apiKey, sysPrompt, newMessages, (chunk) => {
-        assistantText += chunk;
-        setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
-      });
-      const updated = [...newMessages, { role: 'assistant' as const, content: assistantText }];
-      messagesRef.current = updated;
-      setMessages(updated);
-      setAnalysis((prev) => ({ ...prev, loading: false }));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Analysis failed';
-      setAnalysis((prev) => ({
-        loading: false,
-        result: prev.result || null,
-        error: message,
-      }));
-    }
-  }, [fetchData]);
-
-  const handlePdfAnalyze = useCallback(async (pdfText: string, prompt: string) => {
-    // Clear stock-related state
-    setCandles([]);
-    setSymbol('');
-    setFundamentals({ loading: false, data: null, error: null });
-    setChartError(null);
-
-    const model = modelRef.current;
-    const apiKey = apiKeyRef.current;
-
-    if (!model || !apiKey) {
-      setAnalysis({ loading: false, result: null, error: 'Please enter your API key first.' });
-      return;
-    }
-
-    const sysPrompt = 'You are a helpful AI assistant. Analyze the provided document and respond to the user\'s request thoroughly.';
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content: `Here is the document content:\n\n${pdfText}\n\n---\n\n${prompt}`,
-    };
-    const newMessages: ChatMessage[] = [userMsg];
-
-    messagesRef.current = newMessages;
-    setMessages(newMessages);
-    setAnalysis({ loading: true, result: '', error: null });
-
-    try {
-      let assistantText = '';
-      await analyzeChart(model, apiKey, sysPrompt, newMessages, (chunk) => {
-        assistantText += chunk;
-        setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
-      });
-      const updated = [...newMessages, { role: 'assistant' as const, content: assistantText }];
-      messagesRef.current = updated;
-      setMessages(updated);
-      setAnalysis((prev) => ({ ...prev, loading: false }));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Analysis failed';
-      setAnalysis((prev) => ({ loading: false, result: prev.result || null, error: message }));
-    }
-  }, []);
-
-  const handleFollowUp = useCallback(async (text: string) => {
-    const model = modelRef.current;
-    const apiKey = apiKeyRef.current;
-    const sysPrompt = systemPromptRef.current;
-
-    if (!model || !apiKey || !sysPrompt) {
-      setAnalysis((prev) => ({ ...prev, error: 'Please enter your API key first.' }));
-      return;
-    }
-
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    const fullMessages = [...messagesRef.current, userMsg];
-    messagesRef.current = fullMessages;
-    setMessages(fullMessages);
-    setAnalysis({ loading: true, result: '', error: null });
-
-    try {
-      let assistantText = '';
-      await analyzeChart(model, apiKey, sysPrompt, fullMessages, (chunk) => {
-        assistantText += chunk;
-        setAnalysis((prev) => ({ ...prev, result: (prev.result || '') + chunk }));
-      });
-      const updated = [...fullMessages, { role: 'assistant' as const, content: assistantText }];
-      messagesRef.current = updated;
-      setMessages(updated);
-      setAnalysis((prev) => ({ ...prev, loading: false }));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Follow-up failed';
-      setAnalysis((prev) => ({
-        loading: false,
-        result: prev.result || null,
-        error: message,
-      }));
-    }
-  }, []);
-
-  const isLoading = chartLoading || analysis.loading || fundamentals.loading;
+  const isLoading =
+    stockQuery.isLoading || analysisLoading || fundQuery.isLoading;
   const hasData = candles.length > 0;
 
   const [allCopied, setAllCopied] = useState(false);
   const handleCopyAll = useCallback(() => {
     const payload: Record<string, unknown> = { candles };
-    if (fundamentals.data?.rawResponse) {
-      payload.fundamentals = fundamentals.data.rawResponse;
+    if (fundQuery.data?.rawResponse) {
+      payload.fundamentals = fundQuery.data.rawResponse;
     }
     navigator.clipboard.writeText(JSON.stringify(payload)).then(() => {
       setAllCopied(true);
       setTimeout(() => setAllCopied(false), 2000);
     });
-  }, [candles, fundamentals.data]);
+  }, [candles, fundQuery.data]);
 
   return (
     <main className="h-screen flex flex-col overflow-hidden">
@@ -318,7 +228,7 @@ export default function Home() {
           {/* Left sidebar */}
           <div className="border-r border-gray-200 dark:border-gray-800 overflow-y-auto p-4 space-y-4 hidden lg:block">
             <ModelSettings onSettingsChange={handleSettingsChange} />
-            <PdfUpload onAnalyze={handlePdfAnalyze} loading={analysis.loading} />
+            <PdfUpload onAnalyze={handlePdfAnalyze} loading={analysisLoading} />
           </div>
 
           {/* Center content */}
@@ -331,18 +241,51 @@ export default function Home() {
               </div>
             </div>
 
-            <SymbolInput onAnalyze={handleAnalyze} onGetData={handleGetData} loading={isLoading} dataLoading={dataLoading} />
+            <SymbolInput
+              symbol={symbol}
+              onSymbolChange={setSymbol}
+              onAnalyze={handleAnalyze}
+              onGetData={handleGetData}
+              loading={isLoading}
+              dataLoading={stockQuery.isFetching}
+            />
 
-            {chartError && (
+            {stockQuery.error && (
               <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300">
-                {chartError}
+                {stockQuery.error.message}
               </div>
             )}
             <Chart data={candles} symbol={symbol} dark={isDark} />
+
+            <div className="border-l border-gray-200 dark:border-gray-800 hidden xl:flex xl:flex-col overflow-hidden p-4 space-y-3">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Quote Module
+              </label>
+              <select
+                value={module}
+                onChange={(e) =>
+                  setModule(e.target.value as QuoteSummaryModules)
+                }
+                className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+              >
+                {quoteSummary_modules.map((module) => (
+                  <option key={module} value={module}>
+                    {module}
+                  </option>
+                ))}
+              </select>
+              <pre className="flex-1 overflow-auto rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-3 text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                {testQuery.isLoading
+                  ? "Loading..."
+                  : testQuery.data
+                    ? JSON.stringify(testQuery.data, null, 2)
+                    : "error?"}
+              </pre>
+            </div>
             <FundamentalsPanel
-              data={fundamentals.data}
-              loading={fundamentals.loading}
-              error={fundamentals.error}
+              data={fundQuery.data ?? null}
+              loading={fundQuery.isLoading}
+              error={fundQuery.error?.message ?? null}
             />
             {hasData && (
               <button
@@ -351,12 +294,36 @@ export default function Home() {
               >
                 {allCopied ? (
                   <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
                     Copied
                   </>
                 ) : (
                   <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                      />
+                    </svg>
                     Copy All Data
                   </>
                 )}
@@ -366,13 +333,16 @@ export default function Home() {
             {/* Mobile/tablet: PdfUpload + AnalysisPanel inline */}
             <div className="xl:hidden space-y-4">
               <div className="lg:hidden">
-                <PdfUpload onAnalyze={handlePdfAnalyze} loading={analysis.loading} />
+                <PdfUpload
+                  onAnalyze={handlePdfAnalyze}
+                  loading={analysisLoading}
+                />
               </div>
               <AnalysisPanel
                 messages={messages}
-                streamingResult={analysis.result}
-                loading={analysis.loading}
-                error={analysis.error}
+                streamingResult={streamingText ?? (analysisLoading ? "" : null)}
+                loading={analysisLoading}
+                error={analysisError}
                 modelName={modelRef.current?.name}
                 onFollowUp={handleFollowUp}
               />
@@ -383,9 +353,9 @@ export default function Home() {
           <div className="border-l border-gray-200 dark:border-gray-800 hidden xl:flex xl:flex-col overflow-hidden">
             <AnalysisPanel
               messages={messages}
-              streamingResult={analysis.result}
-              loading={analysis.loading}
-              error={analysis.error}
+              streamingResult={streamingText ?? (analysisLoading ? "" : null)}
+              loading={analysisLoading}
+              error={analysisError}
               modelName={modelRef.current?.name}
               onFollowUp={handleFollowUp}
             />

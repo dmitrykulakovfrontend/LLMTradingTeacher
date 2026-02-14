@@ -8,11 +8,14 @@ import type {
   FundamentalMetric,
 } from './types';
 
-export async function fetchFundamentals(symbol: string, fmpApiKey: string): Promise<FundamentalsData> {
+export async function fetchFundamentals(symbol: string, fmpApiKey?: string | null): Promise<FundamentalsData> {
+  const body: Record<string, string> = { symbol };
+  if (fmpApiKey) body.apiKey = fmpApiKey;
+
   const response = await fetch('/api/fundamentals', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, apiKey: fmpApiKey }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

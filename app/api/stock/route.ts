@@ -1,4 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import YahooFinance from 'yahoo-finance2';
+
+export const runtime = 'nodejs';
+
+const yf = new YahooFinance();
+
+function rangeToPeriod1(range: string): Date {
+  const now = new Date();
+  switch (range) {
+    case '1d':
+      return new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+    case '5d':
+      return new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+    case '1mo':
+      return new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+    case '3mo':
+      return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+    default:
+      return new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,37 +36,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 });
   }
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sanitized)}?interval=${interval}&range=${range}`;
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
+    const result = await yf.chart(sanitized, {
+      period1: rangeToPeriod1(range),
+      interval: interval as '1d' | '5m' | '15m' | '1h',
     });
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: `Yahoo Finance returned ${response.status}` },
-        { status: response.status }
-      );
-    }
+    const candles = result.quotes
+      .filter((q) => q.open !== null && q.high !== null && q.low !== null && q.close !== null)
+      .map((q) => ({
+        time: interval === '1d'
+          ? q.date.toISOString().split('T')[0]
+          : Math.floor(q.date.getTime() / 1000),
+        open: q.open!,
+        high: q.high!,
+        low: q.low!,
+        close: q.close!,
+        volume: q.volume ?? undefined,
+      }));
 
-    const data = await response.json();
-
-    if (data.chart?.error) {
-      return NextResponse.json(
-        { error: data.chart.error.description || 'Unknown Yahoo Finance error' },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(data);
-  } catch {
-    return NextResponse.json(
-      { error: 'Failed to fetch stock data' },
-      { status: 500 }
-    );
+    return NextResponse.json(candles);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch stock data';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

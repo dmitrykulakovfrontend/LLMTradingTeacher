@@ -25,14 +25,15 @@ const VALID_INTERVALS: Record<Timeframe, Interval[]> = {
 };
 
 interface SymbolInputProps {
+  symbol: string;
+  onSymbolChange: (symbol: string) => void;
   onAnalyze: (query: StockQuery) => void;
   onGetData: (query: StockQuery) => void;
   loading: boolean;
   dataLoading: boolean;
 }
 
-export default function SymbolInput({ onAnalyze, onGetData, loading, dataLoading }: SymbolInputProps) {
-  const [symbol, setSymbol] = useState('AAPL');
+export default function SymbolInput({ symbol, onSymbolChange, onAnalyze, onGetData, loading, dataLoading }: SymbolInputProps) {
   const [range, setRange] = useState<Timeframe>('1mo');
   const [interval, setInterval] = useState<Interval>('1d');
 
@@ -56,7 +57,7 @@ export default function SymbolInput({ onAnalyze, onGetData, loading, dataLoading
         <input
           type="text"
           value={symbol}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+          onChange={(e) => onSymbolChange(e.target.value.toUpperCase())}
           placeholder="AAPL"
           className="w-24 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />

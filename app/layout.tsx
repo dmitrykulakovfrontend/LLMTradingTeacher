@@ -1,9 +1,10 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import Providers from "./providers";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Stock Pattern Analyzer',
-  description: 'AI-powered technical analysis for learning',
+  title: "Stock Pattern Analyzer",
+  description: "AI-powered technical analysis for learning",
 };
 
 export default function RootLayout({
@@ -20,7 +21,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
