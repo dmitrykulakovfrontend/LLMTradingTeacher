@@ -1,17 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import ThemeToggle from "./components/ThemeToggle";
 import ModelSettings from "./components/ModelSettings";
 import SymbolInput from "./components/SymbolInput";
 import PdfUpload from "./components/widgets/PdfUpload";
 import MarketClock from "./components/widgets/MarketClock";
-import AnalysisPanel from "./components/AnalysisPanel";
+import MultiAnalystPanel from "./components/MultiAnalystPanel";
 import FundamentalsPanel from "./components/FundamentalsPanel";
-import { fetchStockData } from "./lib/yahoo";
-import { fetchFundamentals } from "./lib/fundamentals";
 import { useStockData } from "./hooks/useStockData";
 import { useFundamentals } from "./hooks/useFundamentals";
 import { useAnalysis } from "./hooks/useAnalysis";
@@ -40,8 +37,6 @@ const Chart = dynamic(() => import("./components/widgets/Chart"), {
 });
 
 export default function Home() {
-  const queryClient = useQueryClient();
-
   const [symbol, setSymbol] = useState("AAPL");
   const [activeQuery, setActiveQuery] = useState<StockQuery | null>(null);
   const [isDark, setIsDark] = useState(true);
@@ -61,12 +56,7 @@ export default function Home() {
     fmpApiKeyRef.current || null,
   );
   const {
-    messages,
-    streamingText,
     isLoading: analysisLoading,
-    error: analysisError,
-    analyze,
-    followUp,
     analyzePdf,
     reset: resetAnalysis,
   } = useAnalysis();
@@ -108,55 +98,9 @@ export default function Home() {
     [resetAnalysis],
   );
 
-  const handleAnalyze = useCallback(
-    async (query: StockQuery) => {
-      resetAnalysis();
-      setActiveQuery(query);
-
-      const model = modelRef.current;
-      const apiKey = apiKeyRef.current;
-
-      if (!model || !apiKey) {
-        return;
-      }
-
-      try {
-        const stockData = await queryClient.ensureQueryData({
-          queryKey: ["stockData", query.symbol, query.range, query.interval],
-          queryFn: () => fetchStockData(query),
-          staleTime: 2 * 60 * 1000,
-        });
-
-        let fundData = null;
-        try {
-          fundData = await queryClient.ensureQueryData({
-            queryKey: [
-              "fundamentals",
-              query.symbol,
-              fmpApiKeyRef.current || "yahoo",
-            ],
-            queryFn: () =>
-              fetchFundamentals(query.symbol, fmpApiKeyRef.current || null),
-            staleTime: 5 * 60 * 1000,
-          });
-        } catch {
-          // Fundamentals failure is non-fatal
-        }
-
-        analyze(
-          model,
-          apiKey,
-          systemPromptRef.current,
-          query.symbol,
-          stockData,
-          fundData,
-        );
-      } catch {
-        // Stock data fetch failed — React Query will also show the error
-      }
-    },
-    [queryClient, resetAnalysis, analyze],
-  );
+  // Analysis is now handled internally by MultiAnalystPanel
+  // Just load the data when user clicks "Get Data"
+  const handleAnalyze = handleGetData;
 
   const handlePdfAnalyze = useCallback(
     (pdfText: string, prompt: string) => {
@@ -174,20 +118,6 @@ export default function Home() {
     [analyzePdf],
   );
 
-  const handleFollowUp = useCallback(
-    (text: string) => {
-      const model = modelRef.current;
-      const apiKey = apiKeyRef.current;
-      const sysPrompt = systemPromptRef.current;
-
-      if (!model || !apiKey || !sysPrompt) {
-        return;
-      }
-
-      followUp(model, apiKey, sysPrompt, text);
-    },
-    [followUp],
-  );
 
   const isLoading =
     stockQuery.isLoading || analysisLoading || fundQuery.isLoading;
@@ -281,7 +211,7 @@ export default function Home() {
               />
             )}
 
-            {/* Mobile/tablet: PdfUpload + AnalysisPanel inline */}
+            {/* Mobile/tablet: PdfUpload + MultiAnalystPanel inline */}
             <div className="xl:hidden space-y-4">
               <div className="lg:hidden">
                 <PdfUpload
@@ -289,26 +219,24 @@ export default function Home() {
                   loading={analysisLoading}
                 />
               </div>
-              <AnalysisPanel
-                messages={messages}
-                streamingResult={streamingText ?? (analysisLoading ? "" : null)}
-                loading={analysisLoading}
-                error={analysisError}
-                modelName={modelRef.current?.name}
-                onFollowUp={handleFollowUp}
+              <MultiAnalystPanel
+                symbol={symbol}
+                candles={candles}
+                fundamentals={fundQuery.data ?? null}
+                model={modelRef.current}
+                apiKey={apiKeyRef.current}
               />
             </div>
           </div>
 
-          {/* Right panel — AI Analysis (xl+ only) */}
+          {/* Right panel — Multi-Analyst Analysis (xl+ only) */}
           <div className="border-l border-white/[0.08] bg-[var(--color-bg-surface)] hidden xl:flex xl:flex-col overflow-hidden">
-            <AnalysisPanel
-              messages={messages}
-              streamingResult={streamingText ?? (analysisLoading ? "" : null)}
-              loading={analysisLoading}
-              error={analysisError}
-              modelName={modelRef.current?.name}
-              onFollowUp={handleFollowUp}
+            <MultiAnalystPanel
+              symbol={symbol}
+              candles={candles}
+              fundamentals={fundQuery.data ?? null}
+              model={modelRef.current}
+              apiKey={apiKeyRef.current}
             />
           </div>
         </div>

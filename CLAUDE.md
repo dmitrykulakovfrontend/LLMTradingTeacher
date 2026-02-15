@@ -61,11 +61,20 @@ Next.js 16 app (App Router) for stock analysis with AI. TypeScript, Tailwind CSS
 - **JsonView**: Enhanced JSON viewer with collapsible nodes
 - **DebugData**: Debug panel for exploring fundamentals data
 
+**Analysis Components (`app/components/`):**
+- **MultiAnalystPanel**: Multi-analyst technical analysis with 5 different methodologies and consensus view
+- **AnalystSelector**: Analyst selection checkbox UI with Select All/Deselect All
+- **AnalystResultSection**: Individual analyst result display with streaming support
+- **ConsensusPanel**: Consensus view showing agreement metrics, common patterns, and disagreements
+- **TokenCostModal**: Token usage warning modal with cost estimates
+
 **Utilities:**
 - `app/api/utils/api-helpers.ts`: sanitizeSymbol, parseJsonBody, errorResponse, validateRequired, withErrorHandling
 - `app/lib/formatters.ts`: formatDollar, formatPercent, formatRatio, formatPrice, formatCompact, formatNumber
 - `app/lib/portfolioXRay.ts`: calculatePortfolioExposure, generateWarnings (for Portfolio X-Ray feature)
 - `app/lib/etfOverlap.ts`: computeEtfOverlap (for ETF overlap comparison)
+- `app/lib/analystPrompts.ts`: System prompts for 5 technical analysts (Bulkowski, Murphy, Nison, Pring, Edwards & Magee)
+- `app/lib/consensusAnalysis.ts`: extractSignalsFromText, calculateConsensus (for Multi-Analyst feature)
 
 ## yahoo-finance2 Notes
 
@@ -92,6 +101,63 @@ IMPORTANT: The `incomeStatementHistory`, `balanceSheetHistory`, `cashflowStateme
 - Low severity: Portfolio allocations ≠100%
 
 **Storage:** Portfolio saved to localStorage for persistence between sessions.
+
+## Multi-Analyst Technical Analysis Panel
+
+**Purpose:** Provides multiple technical analysis perspectives simultaneously by running the same chart through 5 different analyst methodologies. Users can select which analysts to consult (1-5) and get a consensus view when multiple analysts are selected.
+
+**The 5 Analysts:**
+1. **Thomas Bulkowski** - Chart patterns with statistical probabilities from Encyclopedia of Chart Patterns
+2. **John Murphy** - Intermarket analysis & classic TA (Technical Analysis of Financial Markets)
+3. **Steve Nison** - Japanese candlestick patterns (Japanese Candlestick Charting Techniques)
+4. **Martin Pring** - Momentum and oscillators (Technical Analysis Explained)
+5. **Edwards & Magee** - Support/resistance & classic patterns (Technical Analysis of Stock Trends, 1948)
+
+**Key Components:**
+- `app/components/MultiAnalystPanel.tsx` — Main panel with tab UI, analyst selection, and orchestration
+- `app/components/AnalystSelector.tsx` — Checkbox UI for selecting analysts
+- `app/components/AnalystResultSection.tsx` — Individual analyst result display
+- `app/components/ConsensusPanel.tsx` — Consensus view showing agreement/disagreement
+- `app/components/TokenCostModal.tsx` — Token cost warning modal
+- `app/lib/analystPrompts.ts` — System prompts for each analyst methodology
+- `app/lib/consensusAnalysis.ts` — Signal extraction and consensus calculation logic
+- `app/hooks/useMultiAnalystAnalysis.ts` — Multi-analyst state management with parallel execution
+
+**How It Works:**
+1. User selects analysts via checkboxes (default: all 5 selected)
+2. Clicks "Analyze" button in MultiAnalystPanel
+3. If 2+ analysts selected, shows token cost warning modal (dismissable)
+4. Parallel LLM calls execute using `Promise.allSettled` pattern
+5. Each analyst streams results independently to their tab
+6. Consensus is calculated from completed analyses using keyword/pattern matching
+7. Tab UI switches between individual analysts and consensus view
+
+**Consensus Calculation:**
+- Extracts sentiment (bullish/bearish/neutral) via keyword matching
+- Identifies chart patterns mentioned by each analyst
+- Finds patterns mentioned by 2+ analysts (common patterns)
+- Calculates agreement percentage based on sentiment distribution
+- Generates key agreements and disagreements summaries
+- Confidence score considers agreement level, common patterns, and signal alignment
+
+**Agreement Formula:**
+- All same sentiment: 100%
+- Majority (60%+): 60-80%
+- Split evenly: 40-50%
+- No clear majority: 30-40%
+
+**Confidence Adjustments:**
+- +10% if 3+ common patterns identified
+- +10% if support/resistance levels align within 2%
+- -20% if contradictory high-confidence signals
+
+**Storage:**
+- Selected analysts saved to localStorage (`llm-selected-analysts`)
+- Token warning dismissal preference (`llm-token-warning-dismissed`)
+
+**Follow-ups:** Each analyst tab maintains separate conversation history for follow-up questions.
+
+**Token Usage:** Multi-analyst analysis uses ~2000 input tokens + ~2000 output tokens per analyst. Cost warning modal estimates total usage before proceeding.
 
 ## Code Style
 
@@ -143,4 +209,5 @@ IMPORTANT: The `incomeStatementHistory`, `balanceSheetHistory`, `cashflowStateme
 - `FmpFundamentalsResponse` → `FundamentalsData` — fundamentals pipeline
 - `EtfHoldingsResponse`, `EtfOverlapResult` — ETF overlap feature
 - `PortfolioHolding`, `ExposureBreakdown`, `PortfolioXRayResult`, `ConcentrationWarning` — Portfolio X-Ray feature
+- `AnalystId`, `AnalystConfig`, `AnalystAnalysis`, `ExtractedSignals`, `ConsensusResult` — Multi-Analyst feature
 - `Timeframe`, `Interval` — time range/interval unions

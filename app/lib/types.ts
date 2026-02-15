@@ -236,3 +236,49 @@ export interface SectorBreakdownResult {
   warnings: ConcentrationWarning[];
   totalCategorized: number;  // % of portfolio with sector data
 }
+
+// --- Multi-Analyst Technical Analysis types ---
+
+export type AnalystId = "bulkowski" | "murphy" | "nison" | "pring" | "edwards-magee";
+
+export interface AnalystConfig {
+  id: AnalystId;
+  name: string;
+  description: string;
+  systemPrompt: string;
+}
+
+export interface AnalystAnalysis {
+  analystId: AnalystId;
+  messages: ChatMessage[];
+  streamingText: string | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+export interface ExtractedSignals {
+  analystId: AnalystId;
+  sentiment: "bullish" | "bearish" | "neutral";
+  confidence: number;
+  patterns: string[];
+  keyLevels: {
+    support: number[];
+    resistance: number[];
+  };
+  priceTargets: {
+    upside?: number;
+    downside?: number;
+  };
+}
+
+export interface ConsensusResult {
+  overallSentiment: "bullish" | "bearish" | "neutral" | "mixed";
+  agreementPercentage: number;
+  bullishCount: number;
+  bearishCount: number;
+  neutralCount: number;
+  commonPatterns: Array<{ pattern: string; mentionedBy: AnalystId[] }>;
+  keyAgreements: string[];
+  keyDisagreements: string[];
+  confidenceScore: number;
+}
