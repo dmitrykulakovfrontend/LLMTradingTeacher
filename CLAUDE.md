@@ -50,6 +50,7 @@ Next.js 16 app (App Router) for stock analysis with AI. TypeScript, Tailwind CSS
 - **CopyButton**: Clipboard copy with state management, accepts any data type
 - **TextInput**: Standardized form inputs with label, error, helper text support
 - **MarkdownRenderer**: Pre-configured Markdown with math support for AI responses
+- **TickerSearch**: Autocomplete input for stock/ETF symbols using Yahoo Finance search API. Debounced (300ms, min 2 chars), keyboard navigation, dropdown results. Used in SymbolInput, EtfOverlap, PortfolioXRay
 
 **Widget Components (`app/components/widgets/`):**
 - **Widget**: Standardized container with header, loading, error states, optional collapsible
@@ -210,4 +211,5 @@ IMPORTANT: The `incomeStatementHistory`, `balanceSheetHistory`, `cashflowStateme
 - `EtfHoldingsResponse`, `EtfOverlapResult` — ETF overlap feature
 - `PortfolioHolding`, `ExposureBreakdown`, `PortfolioXRayResult`, `ConcentrationWarning` — Portfolio X-Ray feature
 - `AnalystId`, `AnalystConfig`, `AnalystAnalysis`, `ExtractedSignals`, `ConsensusResult` — Multi-Analyst feature
+- `TickerSearchResult` — Ticker search autocomplete
 - `Timeframe`, `Interval` — time range/interval unions

@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, Fragment } from "react";
 import { Widget } from "./Widget";
 import { TextInput } from "../ui/TextInput";
+import { TickerSearch } from "../ui/TickerSearch";
 import { Button } from "../ui/Button";
 import { Message } from "../ui/Message";
 import { useEtfHoldings } from "../../hooks/useEtfHoldings";
@@ -437,11 +438,6 @@ export default function PortfolioXRay() {
     [handleAddHolding],
   );
 
-  const handleSymbolChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputSymbol(e.target.value.toUpperCase());
-    setValidationError(null);
-  }, []);
-
   const handleAllocationChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInputAllocation(e.target.value);
     setValidationError(null);
@@ -458,13 +454,18 @@ export default function PortfolioXRay() {
         {/* Input form */}
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <TextInput
-              label="Symbol"
-              value={inputSymbol}
-              onChange={handleSymbolChange}
-              onKeyDown={handleKeyDown}
-              placeholder="AAPL"
-            />
+            <div className="space-y-1">
+              <label className="block font-chakra text-xs font-medium text-[#a0a0a0] uppercase tracking-wider">
+                Symbol
+              </label>
+              <TickerSearch
+                value={inputSymbol}
+                onChange={(val) => { setInputSymbol(val); setValidationError(null); }}
+                onSelect={(sym) => { setInputSymbol(sym); setValidationError(null); }}
+                placeholder="AAPL"
+                className="w-full"
+              />
+            </div>
             <TextInput
               label="Allocation %"
               type="number"

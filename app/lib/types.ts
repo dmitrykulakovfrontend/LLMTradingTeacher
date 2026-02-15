@@ -282,3 +282,13 @@ export interface ConsensusResult {
   keyDisagreements: string[];
   confidenceScore: number;
 }
+
+// --- Ticker Search types ---
+
+export interface TickerSearchResult {
+  symbol: string;
+  shortname: string;
+  longname: string;
+  exchange: string;
+  quoteType: string;
+}

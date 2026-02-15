@@ -1,6 +1,7 @@
 "use client";
 
 import { useRangeSelector } from "../hooks/useRangeSelector";
+import { TickerSearch } from "./ui/TickerSearch";
 import type { StockQuery } from "../lib/types";
 
 interface SymbolInputProps {
@@ -42,12 +43,12 @@ export default function SymbolInput({
       className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2"
     >
       <div className="flex items-center gap-2 flex-wrap">
-        <input
-          type="text"
+        <TickerSearch
           value={symbol}
-          onChange={(e) => onSymbolChange(e.target.value.toUpperCase())}
+          onChange={onSymbolChange}
+          onSelect={onSymbolChange}
           placeholder="AAPL"
-          className="w-24 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-32"
         />
 
         <RangeSelector />

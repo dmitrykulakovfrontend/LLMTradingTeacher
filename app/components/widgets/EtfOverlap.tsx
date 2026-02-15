@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useEtfHoldings } from "../../hooks/useEtfHoldings";
 import { computeEtfOverlap, computeWeightedOverlap } from "../../lib/etfOverlap";
+import { TickerSearch } from "../ui/TickerSearch";
 import type {
   EtfOverlapResult,
   PairwiseOverlap,
@@ -418,16 +419,6 @@ export default function EtfOverlap() {
     });
   }, []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleAdd();
-      }
-    },
-    [handleAdd],
-  );
-
   const handleCompare = useCallback(() => {
     if (etfList.length >= 2) {
       setActiveSymbols([...etfList]);
@@ -498,13 +489,12 @@ export default function EtfOverlap() {
           Compare ETF Holdings
         </label>
         <div className="flex items-center gap-2 flex-wrap">
-          <input
-            type="text"
+          <TickerSearch
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value.toUpperCase())}
-            onKeyDown={handleKeyDown}
+            onChange={setInputValue}
+            onSelect={(sym) => setInputValue(sym)}
             placeholder="e.g. VOO"
-            className="w-24 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-32"
           />
           <button
             type="button"
