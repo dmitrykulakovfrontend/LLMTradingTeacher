@@ -162,6 +162,25 @@ export interface EtfOverlapResult {
   warnings: DiversificationWarning[];
 }
 
+// --- Weighted Overlap types ---
+
+export interface WeightedPairwiseOverlap extends PairwiseOverlap {
+  weightA?: number;           // Portfolio weight for etfA (0-100)
+  weightB?: number;           // Portfolio weight for etfB (0-100)
+  effectiveOverlap?: number;  // Raw overlap × weightA × weightB (0-100 scale)
+}
+
+export interface EtfWeight {
+  symbol: string;
+  weight: number;  // Portfolio weight as percentage (0-100)
+}
+
+export interface WeightedEtfOverlapResult extends EtfOverlapResult {
+  weights: Record<string, number>;  // ETF symbol → portfolio weight
+  weightedOverlaps: WeightedPairwiseOverlap[];
+  hasWeights: boolean;
+}
+
 // --- Portfolio X-Ray types ---
 
 export interface PortfolioHolding {
@@ -186,9 +205,33 @@ export interface PortfolioXRayResult {
 }
 
 export interface ConcentrationWarning {
-  type: "single_stock_concentration" | "top_n_concentration" | "allocation_mismatch";
+  type: "single_stock_concentration" | "top_n_concentration" | "allocation_mismatch" | "sector_concentration";
   severity: "high" | "medium" | "low";
   message: string;
   symbols: string[];
   value: number;
+}
+
+// --- Sector Breakdown types ---
+
+export interface SectorData {
+  symbol: string;
+  sector: string | null;  // null if not available from Yahoo Finance
+}
+
+export interface SectorExposure {
+  sector: string;
+  totalExposure: number;  // Sum of all company exposures in this sector (0-100 scale)
+  companies: Array<{
+    symbol: string;
+    companyName: string;
+    exposure: number;
+  }>;
+  color: string;  // Hex color for pie chart slice
+}
+
+export interface SectorBreakdownResult {
+  sectors: SectorExposure[];
+  warnings: ConcentrationWarning[];
+  totalCategorized: number;  // % of portfolio with sector data
 }

@@ -8,6 +8,7 @@ import { Message } from "../ui/Message";
 import { useEtfHoldings } from "../../hooks/useEtfHoldings";
 import { calculatePortfolioExposure } from "../../lib/portfolioXRay";
 import { formatPercent } from "../../lib/formatters";
+import SectorBreakdownSection from "./SectorBreakdownSection";
 import type {
   PortfolioHolding,
   ExposureBreakdown,
@@ -560,6 +561,12 @@ export default function PortfolioXRay() {
           <div className="space-y-4">
             <WarningsBanner warnings={result.warnings} />
             <ExposureTable exposures={result.exposures} />
+
+            {/* Sector Breakdown */}
+            <div className="border-t border-white/[0.08] pt-4 mt-4">
+              <SectorBreakdownSection exposures={result.exposures} />
+            </div>
+
             <p className="text-xs text-[#666666] font-manrope">
               Based on top holdings reported by Yahoo Finance. Smaller positions
               may not be included in the calculation.

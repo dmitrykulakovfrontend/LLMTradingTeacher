@@ -2,12 +2,15 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useEtfHoldings } from "../../hooks/useEtfHoldings";
-import { computeEtfOverlap } from "../../lib/etfOverlap";
+import { computeEtfOverlap, computeWeightedOverlap } from "../../lib/etfOverlap";
 import type {
   EtfOverlapResult,
   PairwiseOverlap,
   OverlapHoldingRow,
   DiversificationWarning,
+  WeightedPairwiseOverlap,
+  WeightedEtfOverlapResult,
+  PortfolioHolding,
 } from "../../lib/types";
 
 function overlapColor(pct: number): string {
@@ -57,10 +60,42 @@ function WarningsBanner({ warnings }: { warnings: DiversificationWarning[] }) {
 function OverlapMatrix({
   etfs,
   overlaps,
+  weightedOverlaps,
+  hasWeights,
 }: {
   etfs: string[];
   overlaps: PairwiseOverlap[];
+  weightedOverlaps?: WeightedPairwiseOverlap[];
+  hasWeights?: boolean;
 }) {
+  const getWeightForEtf = useCallback((etf: string): number | undefined => {
+    if (!weightedOverlaps) return undefined;
+    const found = weightedOverlaps.find(w => w.etfA === etf || w.etfB === etf);
+    if (!found) return undefined;
+    return found.etfA === etf ? found.weightA : found.weightB;
+  }, [weightedOverlaps]);
+
+  const getEffectiveOverlap = useCallback((a: string, b: string): number | undefined => {
+    if (!weightedOverlaps) return undefined;
+    const found = weightedOverlaps.find(
+      (w) => (w.etfA === a && w.etfB === b) || (w.etfA === b && w.etfB === a)
+    );
+    return found?.effectiveOverlap;
+  }, [weightedOverlaps]);
+
+  const getOverlapColor = useCallback((rawPct: number, effectivePct?: number): string => {
+    // Use effective overlap for coloring if available
+    if (hasWeights && effectivePct !== undefined) {
+      const pct = effectivePct / 100; // Convert to 0-1 scale
+      if (pct > 0.05) return "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300";
+      if (pct > 0.02) return "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300";
+      if (pct > 0.01) return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300";
+      return "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300";
+    }
+    // Use raw overlap for coloring
+    return overlapColor(rawPct);
+  }, [hasWeights]);
+
   return (
     <div>
       <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
@@ -71,14 +106,22 @@ function OverlapMatrix({
           <thead>
             <tr>
               <th className="text-left p-2 text-gray-500 dark:text-gray-400 font-medium" />
-              {etfs.map((etf) => (
-                <th
-                  key={etf}
-                  className="p-2 text-center text-gray-700 dark:text-gray-300 font-medium"
-                >
-                  {etf}
-                </th>
-              ))}
+              {etfs.map((etf) => {
+                const weight = getWeightForEtf(etf);
+                return (
+                  <th
+                    key={etf}
+                    className="p-2 text-center text-gray-700 dark:text-gray-300 font-medium"
+                  >
+                    <div>{etf}</div>
+                    {hasWeights && weight !== undefined && (
+                      <div className="text-xs font-normal text-gray-500 dark:text-gray-400 font-mono">
+                        {weight.toFixed(1)}%
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -98,14 +141,32 @@ function OverlapMatrix({
                       </td>
                     );
                   }
-                  const pct = getOverlapForPair(overlaps, rowEtf, colEtf);
-                  if (pct === null) return <td key={colEtf} className="p-2 text-center">--</td>;
+                  const rawPct = getOverlapForPair(overlaps, rowEtf, colEtf);
+                  if (rawPct === null) return <td key={colEtf} className="p-2 text-center">--</td>;
+
+                  const effectivePct = getEffectiveOverlap(rowEtf, colEtf);
+                  const colorClass = getOverlapColor(rawPct, effectivePct);
+
                   return (
-                    <td key={colEtf} className="p-1 text-center">
+                    <td key={colEtf} className="p-1 text-center relative group">
                       <span
-                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${overlapColor(pct)}`}
+                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${colorClass}`}
+                        title={
+                          hasWeights && effectivePct !== undefined
+                            ? `Raw overlap: ${formatPct(rawPct)}\nEffective impact: ${(effectivePct).toFixed(2)}%`
+                            : `Overlap: ${formatPct(rawPct)}`
+                        }
                       >
-                        {formatPct(pct)}
+                        {hasWeights && effectivePct !== undefined ? (
+                          <div className="flex flex-col items-center leading-tight">
+                            <span>{formatPct(rawPct)}</span>
+                            <span className="text-[10px] opacity-70">
+                              ({(effectivePct).toFixed(2)}%)
+                            </span>
+                          </div>
+                        ) : (
+                          formatPct(rawPct)
+                        )}
                       </span>
                     </td>
                   );
@@ -115,6 +176,11 @@ function OverlapMatrix({
           </tbody>
         </table>
       </div>
+      {hasWeights && (
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+          Showing raw overlap with effective portfolio impact in parentheses.
+        </p>
+      )}
     </div>
   );
 }
@@ -230,10 +296,95 @@ function HoldingsTable({
   );
 }
 
+function EtfTag({
+  ticker,
+  weight,
+  onRemove,
+  onWeightChange,
+  showWeightInput,
+}: {
+  ticker: string;
+  weight?: number;
+  onRemove: () => void;
+  onWeightChange: (weight: number | undefined) => void;
+  showWeightInput: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(weight?.toString() ?? "");
+
+  const handleSave = useCallback(() => {
+    const parsed = parseFloat(inputValue);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+      onWeightChange(parsed);
+    } else if (inputValue === "") {
+      onWeightChange(undefined);
+    }
+    setEditing(false);
+  }, [inputValue, onWeightChange]);
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/30 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:text-blue-300">
+      <span className="font-mono">{ticker}</span>
+
+      {showWeightInput && (
+        <>
+          {!editing ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="ml-1 text-xs text-blue-600 dark:text-blue-400 hover:underline font-mono"
+            >
+              {weight !== undefined ? `${weight.toFixed(1)}%` : "add %"}
+            </button>
+          ) : (
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onBlur={handleSave}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSave();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              autoFocus
+              className="w-12 px-1 text-xs border border-blue-500 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
+            />
+          )}
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={onRemove}
+        className="ml-0.5 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200"
+      >
+        <svg
+          className="w-3 h-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+    </span>
+  );
+}
+
 export default function EtfOverlap() {
   const [inputValue, setInputValue] = useState("");
   const [etfList, setEtfList] = useState<string[]>([]);
   const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
+  const [etfWeights, setEtfWeights] = useState<Record<string, number>>({});
+  const [weightInputMode, setWeightInputMode] = useState(false);
 
   const handleAdd = useCallback(() => {
     const ticker = inputValue
@@ -247,6 +398,12 @@ export default function EtfOverlap() {
 
   const handleRemove = useCallback((ticker: string) => {
     setEtfList((prev) => prev.filter((t) => t !== ticker));
+    // Also remove weight if exists
+    setEtfWeights((prev) => {
+      const updated = { ...prev };
+      delete updated[ticker];
+      return updated;
+    });
   }, []);
 
   const handleKeyDown = useCallback(
@@ -265,13 +422,61 @@ export default function EtfOverlap() {
     }
   }, [etfList]);
 
+  const loadWeightsFromXRay = useCallback(() => {
+    try {
+      const saved = localStorage.getItem("portfolio-xray-holdings");
+      if (!saved) {
+        alert("No Portfolio X-Ray data found. Add holdings in Portfolio X-Ray first.");
+        return;
+      }
+
+      const portfolio: PortfolioHolding[] = JSON.parse(saved);
+      const etfHoldings = portfolio.filter((h) => h.isEtf);
+
+      if (etfHoldings.length === 0) {
+        alert("Portfolio X-Ray has no ETF holdings.");
+        return;
+      }
+
+      const newWeights: Record<string, number> = {};
+      let matchCount = 0;
+
+      etfList.forEach((etf) => {
+        const found = etfHoldings.find((h) => h.symbol === etf);
+        if (found) {
+          newWeights[etf] = found.allocation;
+          matchCount++;
+        }
+      });
+
+      setEtfWeights(newWeights);
+
+      if (matchCount === etfList.length) {
+        alert(`Loaded weights for all ${matchCount} ETFs from Portfolio X-Ray.`);
+      } else if (matchCount > 0) {
+        alert(`Loaded weights for ${matchCount} of ${etfList.length} ETFs from Portfolio X-Ray.`);
+      } else {
+        alert("No matching ETFs found in Portfolio X-Ray.");
+      }
+    } catch (err) {
+      console.error("Failed to load from X-Ray", err);
+      alert("Failed to load weights from Portfolio X-Ray. Invalid data format.");
+    }
+  }, [etfList]);
+
   const holdingsQuery = useEtfHoldings(activeSymbols);
 
-  const overlapResult: EtfOverlapResult | null = useMemo(() => {
+  const overlapResult: EtfOverlapResult | WeightedEtfOverlapResult | null = useMemo(() => {
     if (!holdingsQuery.data?.data || holdingsQuery.data.data.length < 2)
       return null;
-    return computeEtfOverlap(holdingsQuery.data.data);
-  }, [holdingsQuery.data]);
+
+    const hasWeights = Object.keys(etfWeights).length > 0;
+    if (hasWeights) {
+      return computeWeightedOverlap(holdingsQuery.data.data, etfWeights);
+    } else {
+      return computeEtfOverlap(holdingsQuery.data.data);
+    }
+  }, [holdingsQuery.data, etfWeights]);
 
   const fetchErrors = holdingsQuery.data?.errors ?? [];
 
@@ -311,39 +516,85 @@ export default function EtfOverlap() {
 
         {/* Tags */}
         {etfList.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {etfList.map((ticker) => (
-              <span
-                key={ticker}
-                className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/30 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:text-blue-300"
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {etfList.map((ticker) => (
+                <EtfTag
+                  key={ticker}
+                  ticker={ticker}
+                  weight={etfWeights[ticker]}
+                  onRemove={() => handleRemove(ticker)}
+                  onWeightChange={(weight) => {
+                    setEtfWeights((prev) => {
+                      const updated = { ...prev };
+                      if (weight === undefined) {
+                        delete updated[ticker];
+                      } else {
+                        updated[ticker] = weight;
+                      }
+                      return updated;
+                    });
+                  }}
+                  showWeightInput={weightInputMode}
+                />
+              ))}
+              {etfList.length >= 10 && (
+                <span className="text-xs text-gray-400 dark:text-gray-500 self-center">
+                  Max 10 ETFs
+                </span>
+              )}
+            </div>
+
+            {/* Weight controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setWeightInputMode(!weightInputMode)}
+                className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 underline"
               >
-                {ticker}
-                <button
-                  type="button"
-                  onClick={() => handleRemove(ticker)}
-                  className="ml-0.5 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200"
-                >
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
+                {weightInputMode ? "Hide weights" : "Add portfolio weights"}
+              </button>
+
+              {weightInputMode && (
+                <>
+                  <button
+                    type="button"
+                    onClick={loadWeightsFromXRay}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </span>
-            ))}
-            {etfList.length >= 10 && (
-              <span className="text-xs text-gray-400 dark:text-gray-500 self-center">
-                Max 10 ETFs
-              </span>
-            )}
+                    Load from Portfolio X-Ray
+                  </button>
+
+                  {Object.keys(etfWeights).length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEtfWeights({})}
+                        className="text-xs text-gray-600 dark:text-gray-400 hover:underline"
+                      >
+                        Clear weights
+                      </button>
+
+                      <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
+                        Total:{" "}
+                        {Object.values(etfWeights)
+                          .reduce((s, w) => s + w, 0)
+                          .toFixed(1)}
+                        %
+                        {Math.abs(
+                          Object.values(etfWeights).reduce((s, w) => s + w, 0) -
+                            100,
+                        ) > 0.1 && (
+                          <span className="ml-1 text-amber-600 dark:text-amber-400">
+                            ⚠
+                          </span>
+                        )}
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -382,6 +633,16 @@ export default function EtfOverlap() {
           <OverlapMatrix
             etfs={overlapResult.etfs}
             overlaps={overlapResult.pairwiseOverlaps}
+            weightedOverlaps={
+              "weightedOverlaps" in overlapResult
+                ? (overlapResult as WeightedEtfOverlapResult).weightedOverlaps
+                : undefined
+            }
+            hasWeights={
+              "hasWeights" in overlapResult
+                ? (overlapResult as WeightedEtfOverlapResult).hasWeights
+                : false
+            }
           />
           <HoldingsTable
             etfs={overlapResult.etfs}

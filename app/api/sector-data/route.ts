@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (symbols.length > 10) {
+  if (symbols.length > 50) {
     return NextResponse.json(
-      { error: "Maximum 10 ETFs allowed" },
+      { error: "Maximum 50 symbols allowed" },
       { status: 400 },
     );
   }
@@ -44,42 +44,19 @@ export async function GET(request: NextRequest) {
     const results = await Promise.allSettled(
       symbols.map(async (sym) => {
         const result = await yf.quoteSummary(sym, {
-          modules: ["topHoldings"],
+          modules: ["assetProfile"],
         });
 
-        const topHoldings = result.topHoldings;
-        console.log(result);
-        if (
-          !topHoldings ||
-          !topHoldings.holdings ||
-          topHoldings.holdings.length === 0
-        ) {
-          throw new Error(
-            `No holdings data found for ${sym}. It may not be an ETF.`,
-          );
-        }
+        const sector = result.assetProfile?.sector || null;
 
         return {
           symbol: sym,
-          holdings: topHoldings.holdings
-            .filter((h) => h.symbol)
-            .map((h) => ({
-              symbol: h.symbol,
-              holdingName: h.holdingName,
-              holdingPercent: h.holdingPercent,
-            })),
+          sector,
         };
       }),
     );
 
-    const data: Array<{
-      symbol: string;
-      holdings: Array<{
-        symbol: string;
-        holdingName: string;
-        holdingPercent: number;
-      }>;
-    }> = [];
+    const data: Array<{ symbol: string; sector: string | null }> = [];
     const errors: Array<{ symbol: string; error: string }> = [];
 
     results.forEach((result, i) => {
@@ -90,13 +67,15 @@ export async function GET(request: NextRequest) {
           symbol: symbols[i],
           error: result.reason?.message || "Unknown error",
         });
+        // Add symbol with null sector to maintain symbol list consistency
+        data.push({ symbol: symbols[i], sector: null });
       }
     });
 
     return NextResponse.json({ data, errors });
   } catch (err: unknown) {
     const message =
-      err instanceof Error ? err.message : "Failed to fetch ETF holdings";
+      err instanceof Error ? err.message : "Failed to fetch sector data";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

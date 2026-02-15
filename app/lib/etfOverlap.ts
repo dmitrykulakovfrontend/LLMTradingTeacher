@@ -4,6 +4,8 @@ import type {
   PairwiseOverlap,
   OverlapHoldingRow,
   DiversificationWarning,
+  WeightedPairwiseOverlap,
+  WeightedEtfOverlapResult,
 } from "./types";
 
 function computePairwiseOverlap(
@@ -121,5 +123,54 @@ export function computeEtfOverlap(
     overlappingHoldings,
     allHoldings,
     warnings,
+  };
+}
+
+export function computeWeightedOverlap(
+  etfData: EtfHoldingsResponse[],
+  weights: Record<string, number>,
+): WeightedEtfOverlapResult {
+  // 1. Compute base overlap using existing computeEtfOverlap
+  const baseResult = computeEtfOverlap(etfData);
+
+  // 2. Normalize weights to ensure they sum to 100% (or handle partial weights)
+  const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  const normalizedWeights: Record<string, number> = {};
+
+  for (const [symbol, weight] of Object.entries(weights)) {
+    // Normalize only if total > 0, otherwise use raw weights
+    normalizedWeights[symbol] =
+      totalWeight > 0 ? (weight / totalWeight) * 100 : weight;
+  }
+
+  // 3. Calculate effective overlap for each pair
+  const weightedOverlaps: WeightedPairwiseOverlap[] =
+    baseResult.pairwiseOverlaps.map((overlap) => {
+      const weightA = normalizedWeights[overlap.etfA];
+      const weightB = normalizedWeights[overlap.etfB];
+
+      let effectiveOverlap: number | undefined;
+      if (weightA !== undefined && weightB !== undefined) {
+        // Effective overlap = raw overlap × (weightA/100) × (weightB/100) × 100
+        // This gives the "real" overlap impact in portfolio percentage terms
+        effectiveOverlap =
+          overlap.overlapPercent * (weightA / 100) * (weightB / 100) * 100;
+      }
+
+      return {
+        ...overlap,
+        weightA,
+        weightB,
+        effectiveOverlap,
+      };
+    });
+
+  const hasWeights = Object.keys(normalizedWeights).length > 0;
+
+  return {
+    ...baseResult,
+    weights: normalizedWeights,
+    weightedOverlaps,
+    hasWeights,
   };
 }
