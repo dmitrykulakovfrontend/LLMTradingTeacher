@@ -273,7 +273,10 @@ function HoldingsTable({
                     {h.effectiveExposure !== undefined ? (
                       <div className="flex flex-col items-end leading-tight">
                         <span>{formatPct(h.averageExposure)}</span>
-                        <span className="text-[10px] opacity-70">
+                        <span
+                          className="text-[10px] opacity-70 cursor-help"
+                          title="Total exposure of this stock in your whole portfolio"
+                        >
                           ({formatPct(h.effectiveExposure)})
                         </span>
                       </div>
@@ -431,7 +434,7 @@ export default function EtfOverlap() {
     }
   }, [etfList]);
 
-  const loadWeightsFromXRay = useCallback(() => {
+  const loadFromXRay = useCallback(() => {
     try {
       const saved = localStorage.getItem("portfolio-xray-holdings");
       if (!saved) {
@@ -447,29 +450,27 @@ export default function EtfOverlap() {
         return;
       }
 
-      const newWeights: Record<string, number> = {};
-      let matchCount = 0;
+      // Add ETF symbols to the list (avoid duplicates)
+      const newEtfSymbols = etfHoldings.map((h) => h.symbol);
+      const uniqueSymbols = [...new Set([...etfList, ...newEtfSymbols])].slice(0, 10); // Max 10 ETFs
 
-      etfList.forEach((etf) => {
-        const found = etfHoldings.find((h) => h.symbol === etf);
-        if (found) {
-          newWeights[etf] = found.allocation;
-          matchCount++;
+      setEtfList(uniqueSymbols);
+
+      // Load weights for all ETFs from Portfolio X-Ray
+      const newWeights: Record<string, number> = {};
+      etfHoldings.forEach((h) => {
+        if (uniqueSymbols.includes(h.symbol)) {
+          newWeights[h.symbol] = h.allocation;
         }
       });
 
       setEtfWeights(newWeights);
+      setWeightInputMode(true); // Auto-enable weight mode
 
-      if (matchCount === etfList.length) {
-        alert(`Loaded weights for all ${matchCount} ETFs from Portfolio X-Ray.`);
-      } else if (matchCount > 0) {
-        alert(`Loaded weights for ${matchCount} of ${etfList.length} ETFs from Portfolio X-Ray.`);
-      } else {
-        alert("No matching ETFs found in Portfolio X-Ray.");
-      }
+      alert(`Loaded ${etfHoldings.length} ETFs with weights from Portfolio X-Ray.`);
     } catch (err) {
       console.error("Failed to load from X-Ray", err);
-      alert("Failed to load weights from Portfolio X-Ray. Invalid data format.");
+      alert("Failed to load from Portfolio X-Ray. Invalid data format.");
     }
   }, [etfList]);
 
@@ -521,6 +522,14 @@ export default function EtfOverlap() {
           >
             {holdingsQuery.isFetching ? "Loading..." : "Compare"}
           </button>
+          <button
+            type="button"
+            onClick={loadFromXRay}
+            className="rounded-md border border-cyan-500 dark:border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20 px-3 py-1.5 text-sm font-medium text-cyan-700 dark:text-cyan-400 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-colors"
+            title="Load ETFs and weights from Portfolio X-Ray"
+          >
+            Load from Portfolio X-Ray
+          </button>
         </div>
 
         {/* Tags */}
@@ -568,7 +577,7 @@ export default function EtfOverlap() {
                 <>
                   <button
                     type="button"
-                    onClick={loadWeightsFromXRay}
+                    onClick={loadFromXRay}
                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                   >
                     Load from Portfolio X-Ray
