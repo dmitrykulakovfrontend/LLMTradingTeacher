@@ -96,7 +96,7 @@ function generateSectorWarnings(
       warnings.push({
         type: "sector_concentration",
         severity: "high",
-        message: `${sector.sector} represents ${sector.totalExposure.toFixed(1)}% of your portfolio. Consider diversifying across sectors.`,
+        message: `${sector.sector} represents ${sector.totalExposure.toFixed(3)}% of your portfolio. Consider diversifying across sectors.`,
         symbols: sector.companies.map((c) => c.symbol),
         value: sector.totalExposure,
       });
@@ -104,7 +104,7 @@ function generateSectorWarnings(
       warnings.push({
         type: "sector_concentration",
         severity: "medium",
-        message: `${sector.sector} represents ${sector.totalExposure.toFixed(1)}% of your portfolio. Monitor sector concentration.`,
+        message: `${sector.sector} represents ${sector.totalExposure.toFixed(3)}% of your portfolio. Monitor sector concentration.`,
         symbols: sector.companies.map((c) => c.symbol),
         value: sector.totalExposure,
       });

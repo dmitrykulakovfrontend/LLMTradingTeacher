@@ -16,7 +16,7 @@ export function formatDollar(n: number | undefined | null): string {
  */
 export function formatPercent(n: number | undefined | null): string {
   if (n == null) return "N/A";
-  return `${n.toFixed(2)}%`;
+  return `${n.toFixed(3)}%`;
 }
 
 /**

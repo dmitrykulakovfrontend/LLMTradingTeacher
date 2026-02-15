@@ -24,7 +24,7 @@ function overlapColor(pct: number): string {
 }
 
 function formatPct(value: number): string {
-  return (value * 100).toFixed(1) + "%";
+  return (value * 100).toFixed(3) + "%";
 }
 
 function getOverlapForPair(
@@ -153,7 +153,7 @@ function OverlapMatrix({
                         className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${colorClass}`}
                         title={
                           hasWeights && effectivePct !== undefined
-                            ? `Raw overlap: ${formatPct(rawPct)}\nEffective impact: ${(effectivePct).toFixed(2)}%`
+                            ? `Raw overlap: ${formatPct(rawPct)}\nEffective impact: ${(effectivePct).toFixed(3)}%`
                             : `Overlap: ${formatPct(rawPct)}`
                         }
                       >
@@ -161,7 +161,7 @@ function OverlapMatrix({
                           <div className="flex flex-col items-center leading-tight">
                             <span>{formatPct(rawPct)}</span>
                             <span className="text-[10px] opacity-70">
-                              ({(effectivePct).toFixed(2)}%)
+                              ({(effectivePct).toFixed(3)}%)
                             </span>
                           </div>
                         ) : (
@@ -270,7 +270,16 @@ function HoldingsTable({
                         : "text-gray-800 dark:text-gray-200"
                     }`}
                   >
-                    {formatPct(h.averageExposure)}
+                    {h.effectiveExposure !== undefined ? (
+                      <div className="flex flex-col items-end leading-tight">
+                        <span>{formatPct(h.averageExposure)}</span>
+                        <span className="text-[10px] opacity-70">
+                          ({formatPct(h.effectiveExposure)})
+                        </span>
+                      </div>
+                    ) : (
+                      formatPct(h.averageExposure)
+                    )}
                   </td>
                   <td className="p-2 text-center text-gray-600 dark:text-gray-400">
                     {h.etfCount}/{etfs.length}

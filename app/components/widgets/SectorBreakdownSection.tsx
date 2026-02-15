@@ -172,7 +172,7 @@ export default function SectorBreakdownSection({
         Sector classifications based on Yahoo Finance data.{" "}
         {result.totalCategorized < 95 && (
           <span className="text-amber-400">
-            {(100 - result.totalCategorized).toFixed(1)}% of portfolio lacks
+            {(100 - result.totalCategorized).toFixed(3)}% of portfolio lacks
             sector data.
           </span>
         )}

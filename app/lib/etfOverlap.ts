@@ -89,7 +89,7 @@ export function computeEtfOverlap(
     if (h.etfCount === totalEtfCount && h.averageExposure > 0.05) {
       warnings.push({
         type: "single_stock_concentration",
-        message: `${h.holdingName} (${h.symbol}) appears in all ${totalEtfCount} ETFs with an average weight of ${(h.averageExposure * 100).toFixed(1)}%.`,
+        message: `${h.holdingName} (${h.symbol}) appears in all ${totalEtfCount} ETFs with an average weight of ${(h.averageExposure * 100).toFixed(3)}%.`,
         symbols: [h.symbol],
         value: h.averageExposure,
       });
@@ -109,7 +109,7 @@ export function computeEtfOverlap(
     if (cumulativeExposure > 0.25) {
       warnings.push({
         type: "top_n_concentration",
-        message: `Top ${topConcentrated.length} overlapping companies account for ${(cumulativeExposure * 100).toFixed(1)}% combined average exposure. You may not be as diversified as you think.`,
+        message: `Top ${topConcentrated.length} overlapping companies account for ${(cumulativeExposure * 100).toFixed(3)}% combined average exposure. You may not be as diversified as you think.`,
         symbols: [...topConcentrated],
         value: cumulativeExposure,
       });
@@ -167,8 +167,33 @@ export function computeWeightedOverlap(
 
   const hasWeights = Object.keys(normalizedWeights).length > 0;
 
+  // 4. Calculate effective exposure for each holding
+  const weightedAllHoldings = baseResult.allHoldings.map((holding) => {
+    let effectiveExposure: number | undefined;
+
+    if (hasWeights) {
+      // Sum of (holding weight in ETF × ETF portfolio weight) across all ETFs
+      effectiveExposure = 0;
+      for (const [etfSymbol, holdingWeight] of Object.entries(holding.weights)) {
+        const etfPortfolioWeight = normalizedWeights[etfSymbol];
+        if (etfPortfolioWeight !== undefined) {
+          effectiveExposure += (holdingWeight * etfPortfolioWeight) / 100;
+        }
+      }
+    }
+
+    return {
+      ...holding,
+      effectiveExposure,
+    };
+  });
+
+  const weightedOverlappingHoldings = weightedAllHoldings.filter((h) => h.etfCount >= 2);
+
   return {
     ...baseResult,
+    allHoldings: weightedAllHoldings,
+    overlappingHoldings: weightedOverlappingHoldings,
     weights: normalizedWeights,
     weightedOverlaps,
     hasWeights,

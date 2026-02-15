@@ -145,6 +145,7 @@ export interface OverlapHoldingRow {
   weights: Record<string, number>;
   etfCount: number;
   averageExposure: number;
+  effectiveExposure?: number;  // Portfolio-weighted exposure
 }
 
 export interface DiversificationWarning {
