@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, JSX } from "react";
+import { useState, JSX } from "react";
 import type { Timeframe, Interval } from "../lib/types";
 type RangeSelectorParams =
   | { defaultRange: Timeframe; defaultInterval?: Interval }

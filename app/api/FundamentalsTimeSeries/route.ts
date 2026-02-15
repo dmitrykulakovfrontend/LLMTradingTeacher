@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
-import { QuoteSummaryModules } from "yahoo-finance2/modules/quoteSummary";
 import {
   FundamentalsTimeSeriesModule,
   FundamentalsTimeSeriesType,
@@ -46,15 +45,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await yf.fundamentalsTimeSeries(
-      symbol,
-      {
-        module,
-        period1: rangeToPeriod1(range as Timeframe),
-        type,
-      },
-      { validateResult: false },
-    );
+    const result = await yf.fundamentalsTimeSeries(symbol, {
+      module,
+      period1: rangeToPeriod1(range as Timeframe),
+      type,
+    });
 
     return NextResponse.json(result);
   } catch (err: unknown) {

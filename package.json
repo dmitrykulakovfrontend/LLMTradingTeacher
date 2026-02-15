@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check:unused": "unimported"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +29,7 @@
     "yahoo-finance2": "^3.13.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.3",
     "@tailwindcss/postcss": "^4.1.18",
     "@tanstack/react-query-devtools": "^5.91.3",
     "@types/node": "^25.2.2",
@@ -38,6 +40,7 @@
     "eslint-config-next": "^16.1.6",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "unimported": "^1.31.0"
   }
 }

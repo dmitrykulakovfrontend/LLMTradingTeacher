@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createChart, CandlestickSeries } from 'lightweight-charts';
 import type { IChartApi } from 'lightweight-charts';
-import type { CandleData } from '../lib/types';
+import type { CandleData } from '../../lib/types';
 
 interface ChartProps {
   data: CandleData[];

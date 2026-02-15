@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
 import type { ChatMessage } from '../lib/types';
+import { Spinner } from './ui/Spinner';
+import { Message } from './ui/Message';
+import { Button } from './ui/Button';
+import { MarkdownRenderer } from './ui/MarkdownRenderer';
 
 interface AnalysisPanelProps {
   messages: ChatMessage[];
@@ -15,15 +14,6 @@ interface AnalysisPanelProps {
   error: string | null;
   modelName?: string;
   onFollowUp: (text: string) => void;
-}
-
-function Spinner() {
-  return (
-    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
-  );
 }
 
 export default function AnalysisPanel({ messages, streamingResult, loading, error, modelName, onFollowUp }: AnalysisPanelProps) {
@@ -54,11 +44,11 @@ export default function AnalysisPanel({ messages, streamingResult, loading, erro
   const showInput = hasCompletedAnalysis || (isStreamingNewMessage);
 
   return (
-    <div className="rounded-lg xl:rounded-none border border-gray-200 dark:border-gray-800 xl:border-0 bg-white dark:bg-gray-900/50 p-3 sm:p-4 flex flex-col flex-1 min-h-0">
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">AI Analysis</h2>
+    <div className="widget-grid-bg border border-white/[0.08] xl:border-0 bg-[#141414] p-3 sm:p-4 flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between mb-3 shrink-0 border-b border-white/[0.08] pb-3">
+        <h2 className="font-chakra text-lg font-bold text-white tracking-wider uppercase">AI Analysis</h2>
         {loading && (
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-2 text-xs text-[#666666] font-manrope">
             <Spinner />
             {hasStreaming ? 'Streaming' : 'Thinking'}{modelName ? ` (${modelName})` : ''}...
           </div>
@@ -66,8 +56,8 @@ export default function AnalysisPanel({ messages, streamingResult, loading, erro
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300 mb-3 shrink-0">
-          {error}
+        <div className="mb-3 shrink-0">
+          <Message variant="error">{error}</Message>
         </div>
       )}
 
@@ -82,9 +72,7 @@ export default function AnalysisPanel({ messages, streamingResult, loading, erro
 
             {/* Streaming assistant response (not yet in messages array) */}
             {isStreamingNewMessage && (
-              <div className="analysis-content text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                <Markdown remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]} rehypePlugins={[rehypeKatex]}>{streamingResult}</Markdown>
-              </div>
+              <MarkdownRenderer>{streamingResult}</MarkdownRenderer>
             )}
 
             <div ref={bottomRef} />
@@ -92,29 +80,30 @@ export default function AnalysisPanel({ messages, streamingResult, loading, erro
         )}
 
         {!hasMessages && !loading && !error && (
-          <p className="text-gray-400 dark:text-gray-500 py-8 text-center">
+          <p className="text-[#666666] font-manrope py-8 text-center">
             Analysis will appear here after you click Analyze
           </p>
         )}
       </div>
 
       {showInput && (
-        <form onSubmit={handleSubmit} className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 shrink-0">
+        <form onSubmit={handleSubmit} className="flex gap-2 pt-3 border-t border-white/[0.08] shrink-0">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a follow-up question..."
             disabled={loading}
-            className="flex-1 min-w-0 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className="flex-1 min-w-0 border bg-[#141414] font-ibm text-white placeholder-[#666666] focus:outline-none focus:ring-1 border-white/[0.08] focus:border-[var(--color-accent-cyan)] focus:ring-[var(--color-accent-cyan)] px-3 py-2 text-sm transition-all duration-200 disabled:opacity-50"
           />
-          <button
+          <Button
             type="submit"
             disabled={loading || !input.trim()}
-            className="shrink-0 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            variant="primary"
+            size="md"
           >
             Send
-          </button>
+          </Button>
         </form>
       )}
     </div>
@@ -125,16 +114,12 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg bg-blue-600 px-3 py-2 text-sm text-white">
+        <div className="max-w-[85%] border border-[var(--color-accent-cyan)]/30 bg-[var(--color-accent-cyan)]/10 px-3 py-2 text-sm text-white font-manrope">
           {message.content}
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="analysis-content text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-      <Markdown remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]} rehypePlugins={[rehypeKatex]}>{message.content}</Markdown>
-    </div>
-  );
+  return <MarkdownRenderer>{message.content}</MarkdownRenderer>;
 }

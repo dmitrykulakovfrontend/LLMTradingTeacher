@@ -1,19 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useState, useRef, useCallback, useEffect } from "react";
-import {
-  quoteSummary_modules,
-  QuoteSummaryModules,
-} from "yahoo-finance2/modules/quoteSummary";
 import JsonView from "./JsonView";
 import {
   FundamentalsTimeSeriesModule,
   FundamentalsTimeSeriesType,
-  Timeframe,
-} from "../lib/types";
-import { useRangeSelector } from "../hooks/useRangeSelector";
-import { fetchFundamentalsTimeSeries } from "../lib/fundamentalsTimeSeries";
+} from "../../lib/types";
+import { useRangeSelector } from "../../hooks/useRangeSelector";
+import { fetchFundamentalsTimeSeries } from "../../lib/fundamentalsTimeSeries";
 import {
   FundamentalsTimeSeries_Modules,
   FundamentalsTimeSeries_Types,

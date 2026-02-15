@@ -8,7 +8,7 @@ const ReactJsonView = dynamic(() => import("@microlink/react-json-view"), {
 
 type JsonViewProps = { header: string; data: object };
 
-function JsonView({ header, data }: JsonViewProps) {
+function JsonView({ header: _header, data }: JsonViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

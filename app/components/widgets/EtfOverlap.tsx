@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { useEtfHoldings } from "../hooks/useEtfHoldings";
-import { computeEtfOverlap } from "../lib/etfOverlap";
+import { useEtfHoldings } from "../../hooks/useEtfHoldings";
+import { computeEtfOverlap } from "../../lib/etfOverlap";
 import type {
   EtfOverlapResult,
   PairwiseOverlap,
   OverlapHoldingRow,
   DiversificationWarning,
-} from "../lib/types";
+} from "../../lib/types";
 
 function overlapColor(pct: number): string {
   if (pct > 0.6)

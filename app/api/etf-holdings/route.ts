@@ -18,7 +18,12 @@ export async function GET(request: NextRequest) {
 
   const symbols = symbolsParam
     .split(",")
-    .map((s) => s.trim().replace(/[^a-zA-Z0-9.\-^]/g, "").toUpperCase())
+    .map((s) =>
+      s
+        .trim()
+        .replace(/[^a-zA-Z0-9.\-^]/g, "")
+        .toUpperCase(),
+    )
     .filter(Boolean);
 
   if (symbols.length === 0) {

@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import ThemeToggle from "./components/ThemeToggle";
 import ModelSettings from "./components/ModelSettings";
 import SymbolInput from "./components/SymbolInput";
-import PdfUpload from "./components/PdfUpload";
-import MarketClock from "./components/MarketClock";
+import PdfUpload from "./components/widgets/PdfUpload";
+import MarketClock from "./components/widgets/MarketClock";
 import AnalysisPanel from "./components/AnalysisPanel";
 import FundamentalsPanel from "./components/FundamentalsPanel";
 import { fetchStockData } from "./lib/yahoo";
@@ -21,19 +21,18 @@ import type {
   FundamentalsTimeSeriesType,
   StockQuery,
 } from "./lib/types";
-import {
-  quoteSummary_modules,
-  QuoteSummaryModules,
-} from "yahoo-finance2/modules/quoteSummary";
-import DebugData from "./components/DebugData";
-import Collapseable from "./components/Collapseable";
-import EtfOverlap from "./components/EtfOverlap";
+import DebugData from "./components/widgets/DebugData";
+import Collapseable from "./components/ui/Collapseable";
+import EtfOverlap from "./components/widgets/EtfOverlap";
+import PortfolioXRay from "./components/widgets/PortfolioXRay";
+import { Message } from "./components/ui/Message";
+import { CopyButton } from "./components/ui/CopyButton";
 
-const Chart = dynamic(() => import("./components/Chart"), {
+const Chart = dynamic(() => import("./components/widgets/Chart"), {
   ssr: false,
   loading: () => (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 p-4">
-      <div className="flex items-center justify-center h-60 sm:h-90 text-gray-400 dark:text-gray-500">
+    <div className="widget-grid-bg border border-white/[0.08] bg-[#141414] p-4">
+      <div className="flex items-center justify-center h-60 sm:h-90 text-[#666666] font-manrope">
         Loading chart...
       </div>
     </div>
@@ -194,25 +193,21 @@ export default function Home() {
     stockQuery.isLoading || analysisLoading || fundQuery.isLoading;
   const hasData = candles.length > 0;
 
-  const [allCopied, setAllCopied] = useState(false);
-  const handleCopyAll = useCallback(() => {
+  const allDataPayload = (() => {
     const payload: Record<string, unknown> = { candles };
     if (fundQuery.data?.rawResponse) {
       payload.fundamentals = fundQuery.data.rawResponse;
     }
-    navigator.clipboard.writeText(JSON.stringify(payload)).then(() => {
-      setAllCopied(true);
-      setTimeout(() => setAllCopied(false), 2000);
-    });
-  }, [candles, fundQuery.data]);
+    return payload;
+  })();
 
   return (
-    <main className="h-screen flex flex-col overflow-hidden">
+    <main className="h-screen flex flex-col overflow-hidden bg-[var(--color-bg-primary)]">
       {/* Header */}
-      <header className="shrink-0 border-b border-gray-200 dark:border-gray-800 px-4 xl:px-6 py-3">
+      <header className="shrink-0 border-b border-white/[0.08] px-4 xl:px-6 py-3 widget-grid-bg">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-6 min-w-0">
-            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+            <h1 className="font-chakra text-xl font-bold text-white tracking-wider uppercase whitespace-nowrap">
               Stock Pattern Analyzer
             </h1>
             <div className="hidden md:block">
@@ -227,13 +222,13 @@ export default function Home() {
       <div className="flex-1 min-h-0 overflow-hidden">
         <div className="h-full grid grid-cols-1 lg:grid-cols-[260px_1fr] xl:grid-cols-[260px_1fr_400px] gap-0">
           {/* Left sidebar */}
-          <div className="border-r border-gray-200 dark:border-gray-800 overflow-y-auto p-4 space-y-4 hidden lg:block">
+          <div className="border-r border-white/[0.08] overflow-y-auto p-4 space-y-4 hidden lg:block bg-[var(--color-bg-surface)]">
             <ModelSettings onSettingsChange={handleSettingsChange} />
             <PdfUpload onAnalyze={handlePdfAnalyze} loading={analysisLoading} />
           </div>
 
           {/* Center content */}
-          <div className="overflow-y-auto p-4 space-y-4">
+          <div className="overflow-y-auto p-4 space-y-4 bg-[var(--color-bg-primary)]">
             {/* Mobile-only: sidebar widgets inline */}
             <div className="lg:hidden space-y-4">
               <ModelSettings onSettingsChange={handleSettingsChange} />
@@ -252,9 +247,9 @@ export default function Home() {
             />
 
             {stockQuery.error && (
-              <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300">
+              <Message variant="error">
                 {stockQuery.error.message}
-              </div>
+              </Message>
             )}
             <Chart data={candles} symbol={symbol} dark={isDark} />
             <Collapseable title="Data Explorer">
@@ -276,47 +271,14 @@ export default function Home() {
             <Collapseable title="ETF Overlap Comparator">
               <EtfOverlap />
             </Collapseable>
+            <PortfolioXRay />
             {hasData && (
-              <button
-                onClick={handleCopyAll}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                {allCopied ? (
-                  <>
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Copy All Data
-                  </>
-                )}
-              </button>
+              <CopyButton
+                data={allDataPayload}
+                label="Copy All Data"
+                variant="secondary"
+                size="sm"
+              />
             )}
 
             {/* Mobile/tablet: PdfUpload + AnalysisPanel inline */}
@@ -339,7 +301,7 @@ export default function Home() {
           </div>
 
           {/* Right panel — AI Analysis (xl+ only) */}
-          <div className="border-l border-gray-200 dark:border-gray-800 hidden xl:flex xl:flex-col overflow-hidden">
+          <div className="border-l border-white/[0.08] bg-[var(--color-bg-surface)] hidden xl:flex xl:flex-col overflow-hidden">
             <AnalysisPanel
               messages={messages}
               streamingResult={streamingText ?? (analysisLoading ? "" : null)}

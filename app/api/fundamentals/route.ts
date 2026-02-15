@@ -103,15 +103,11 @@ async function fetchViaYahoo(symbol: string) {
         "defaultKeyStatistics",
       ],
     }),
-    yf.fundamentalsTimeSeries(
-      symbol,
-      {
-        module: "all",
-        period1: new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000),
-        type: "annual",
-      },
-      { validateResult: false },
-    ),
+    yf.fundamentalsTimeSeries(symbol, {
+      module: "all",
+      period1: new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000),
+      type: "annual",
+    }),
   ]);
 
   const fd = summaryResult.financialData;

@@ -1,0 +1,30 @@
+{
+  "entry": [
+    "app/page.tsx",
+    "app/layout.tsx",
+    "app/api/**/*.ts"
+  ],
+  "extensions": [".ts", ".tsx", ".js", ".jsx"],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/out/**",
+    "**/build/**",
+    "**/dist/**"
+  ],
+  "ignoreUnresolved": [
+    "react",
+    "react-dom",
+    "next",
+    "@tanstack/react-query",
+    "yahoo-finance2"
+  ],
+  "ignoreUnused": [
+    "app/layout.tsx",
+    "next.config.ts",
+    "tailwind.config.ts",
+    "postcss.config.mjs",
+    "eslint.config.mjs",
+    ".unimportedrc.json"
+  ]
+}

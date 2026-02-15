@@ -123,7 +123,6 @@ function statusLabel(ex: Exchange, now: Date): { open: boolean; label: string } 
   const { h, m, day } = getExchangeMinutes(now, ex.tz);
   const nowMins = h * 60 + m;
   const openMins = ex.openH * 60 + ex.openM;
-  const closeMins = ex.closeH * 60 + ex.closeM;
   const open = isOpen(ex, now);
 
   if (open) {

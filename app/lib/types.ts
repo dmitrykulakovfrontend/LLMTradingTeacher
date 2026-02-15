@@ -1,5 +1,3 @@
-import { FundamentalsTimeSeries_Types } from "yahoo-finance2/modules/fundamentalsTimeSeries";
-
 export interface CandleData {
   time: string | number;
   open: number;
@@ -162,4 +160,35 @@ export interface EtfOverlapResult {
   overlappingHoldings: OverlapHoldingRow[];
   allHoldings: OverlapHoldingRow[];
   warnings: DiversificationWarning[];
+}
+
+// --- Portfolio X-Ray types ---
+
+export interface PortfolioHolding {
+  symbol: string;
+  allocation: number;  // 0-100 percentage
+  isEtf: boolean;
+}
+
+export interface ExposureBreakdown {
+  symbol: string;
+  companyName: string;
+  directAllocation: number;  // Direct stock holding %
+  fromEtfs: Array<{ etfSymbol: string; contribution: number }>;  // ETF-derived %
+  totalExposure: number;  // Sum of direct + all ETF contributions
+}
+
+export interface PortfolioXRayResult {
+  holdings: PortfolioHolding[];
+  exposures: ExposureBreakdown[];
+  warnings: ConcentrationWarning[];
+  totalAllocated: number;
+}
+
+export interface ConcentrationWarning {
+  type: "single_stock_concentration" | "top_n_concentration" | "allocation_mismatch";
+  severity: "high" | "medium" | "low";
+  message: string;
+  symbols: string[];
+  value: number;
 }
