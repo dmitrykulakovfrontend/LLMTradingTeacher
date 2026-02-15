@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, CandlestickSeries } from 'lightweight-charts';
-import type { IChartApi } from 'lightweight-charts';
-import type { CandleData } from '../../lib/types';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { createChart, CandlestickSeries } from "lightweight-charts";
+import type { IChartApi } from "lightweight-charts";
+import type { CandleData } from "../../lib/types";
 
 interface ChartProps {
   data: CandleData[];
@@ -12,18 +12,20 @@ interface ChartProps {
 }
 
 const DARK_THEME = {
-  background: '#0f1117',
-  text: '#9ca3af',
-  grid: '#1f2937',
-  border: '#374151',
+  background: "#0f1117",
+  text: "#9ca3af",
+  grid: "#1f2937",
+  border: "#374151",
 };
 
 const LIGHT_THEME = {
-  background: '#ffffff',
-  text: '#6b7280',
-  grid: '#f3f4f6',
-  border: '#e5e7eb',
+  background: "#ffffff",
+  text: "#6b7280",
+  grid: "#f3f4f6",
+  border: "#e5e7eb",
 };
+const ZOOM_STEP = 0.2;
+const PAN_STEP = 10;
 
 export default function Chart({ data, symbol, dark = true }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,13 +66,73 @@ export default function Chart({ data, symbol, dark = true }: ChartProps) {
       },
     });
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!chartRef.current) return;
+      if (
+        document.activeElement &&
+        ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)
+      ) {
+        return;
+      }
+
+      const timeScale = chartRef.current.timeScale();
+      const range = timeScale.getVisibleLogicalRange();
+      if (!range) return;
+
+      const length = range.to - range.from;
+
+      switch (e.key) {
+        // Zoom in
+        case "+":
+        case "=": {
+          const newLength = length * (1 - ZOOM_STEP);
+          const center = (range.from + range.to) / 2;
+          timeScale.setVisibleLogicalRange({
+            from: center - newLength / 2,
+            to: center + newLength / 2,
+          });
+          break;
+        }
+
+        // Zoom out
+        case "-":
+        case "_": {
+          const newLength = length * (1 + ZOOM_STEP);
+          const center = (range.from + range.to) / 2;
+          timeScale.setVisibleLogicalRange({
+            from: center - newLength / 2,
+            to: center + newLength / 2,
+          });
+          break;
+        }
+
+        // Pan left
+        case "ArrowLeft": {
+          timeScale.scrollToPosition(
+            timeScale.scrollPosition() - PAN_STEP,
+            false,
+          );
+          break;
+        }
+
+        // Pan right
+        case "ArrowRight": {
+          timeScale.scrollToPosition(
+            timeScale.scrollPosition() + PAN_STEP,
+            false,
+          );
+          break;
+        }
+      }
+    };
+
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderDownColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
+      upColor: "#22c55e",
+      downColor: "#ef4444",
+      borderDownColor: "#ef4444",
+      borderUpColor: "#22c55e",
+      wickDownColor: "#ef4444",
+      wickUpColor: "#22c55e",
     });
 
     series.setData(data as Parameters<typeof series.setData>[0]);
@@ -87,10 +149,13 @@ export default function Chart({ data, symbol, dark = true }: ChartProps) {
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("keydown", handleKeyDown);
+
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
@@ -112,7 +177,7 @@ export default function Chart({ data, symbol, dark = true }: ChartProps) {
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 p-3 sm:p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-          {symbol ? `${symbol} Chart` : 'Chart'}
+          {symbol ? `${symbol} Chart` : "Chart"}
         </h2>
         {data.length > 0 && (
           <button
@@ -121,12 +186,36 @@ export default function Chart({ data, symbol, dark = true }: ChartProps) {
           >
             {copied ? (
               <>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
                 Copied
               </>
             ) : (
               <>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
                 Copy Data
               </>
             )}
