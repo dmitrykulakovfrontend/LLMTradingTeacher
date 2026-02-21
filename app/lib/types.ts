@@ -292,3 +292,35 @@ export interface TickerSearchResult {
   exchange: string;
   quoteType: string;
 }
+
+// --- Technical Indicator types ---
+
+export interface IndicatorPoint {
+  time: string | number;
+  value: number;
+}
+
+export interface BollingerBandsResult {
+  upper: IndicatorPoint[];
+  middle: IndicatorPoint[];
+  lower: IndicatorPoint[];
+}
+
+export interface MACDResult {
+  macd: IndicatorPoint[];
+  signal: IndicatorPoint[];
+  histogram: IndicatorPoint[];
+}
+
+export interface IndicatorConfig {
+  sma20: boolean;
+  sma50: boolean;
+  sma200: boolean;
+  ema12: boolean;
+  ema26: boolean;
+  bollingerBands: boolean;
+  rsi: boolean;
+  macd: boolean;
+}
+
+export type IndicatorPreset = "trend" | "momentum" | "volatility" | "all" | "none";

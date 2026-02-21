@@ -56,7 +56,7 @@ Next.js 16 app (App Router) for stock analysis with AI. TypeScript, Tailwind CSS
 - **Widget**: Standardized container with header, loading, error states, optional collapsible
 - **PortfolioXRay**: Portfolio exposure analyzer that flattens ETF holdings to reveal actual company exposure with concentration warnings
 - **EtfOverlap**: Compare multiple ETFs to find overlapping holdings
-- **Chart**: Candlestick chart with lightweight-charts (dynamically imported)
+- **Chart**: Candlestick chart with lightweight-charts (dynamically imported), supports technical indicator overlays and sub-panels
 - **MarketClock**: Live market hours display for major exchanges
 - **PdfUpload**: PDF document uploader with text extraction
 - **JsonView**: Enhanced JSON viewer with collapsible nodes
@@ -65,6 +65,7 @@ Next.js 16 app (App Router) for stock analysis with AI. TypeScript, Tailwind CSS
 **Analysis Components (`app/components/`):**
 - **MultiAnalystPanel**: Multi-analyst technical analysis with 5 different methodologies and consensus view
 - **AnalystSelector**: Analyst selection checkbox UI with Select All/Deselect All
+- **IndicatorSelector**: Technical indicator toggle UI with preset buttons (Trend, Momentum, Volatility, All, None)
 - **AnalystResultSection**: Individual analyst result display with streaming support
 - **ConsensusPanel**: Consensus view showing agreement metrics, common patterns, and disagreements
 - **TokenCostModal**: Token usage warning modal with cost estimates
@@ -76,6 +77,7 @@ Next.js 16 app (App Router) for stock analysis with AI. TypeScript, Tailwind CSS
 - `app/lib/etfOverlap.ts`: computeEtfOverlap (for ETF overlap comparison)
 - `app/lib/analystPrompts.ts`: System prompts for 5 technical analysts (Bulkowski, Murphy, Nison, Pring, Edwards & Magee)
 - `app/lib/consensusAnalysis.ts`: extractSignalsFromText, calculateConsensus (for Multi-Analyst feature)
+- `app/lib/indicators.ts`: calculateSMA, calculateEMA, calculateBollingerBands, calculateRSI, calculateMACD (for Chart technical indicators)
 
 ## yahoo-finance2 Notes
 
@@ -213,3 +215,33 @@ IMPORTANT: The `incomeStatementHistory`, `balanceSheetHistory`, `cashflowStateme
 - `AnalystId`, `AnalystConfig`, `AnalystAnalysis`, `ExtractedSignals`, `ConsensusResult` — Multi-Analyst feature
 - `TickerSearchResult` — Ticker search autocomplete
 - `Timeframe`, `Interval` — time range/interval unions
+- `IndicatorConfig`, `IndicatorPreset`, `IndicatorPoint`, `BollingerBandsResult`, `MACDResult` — Technical indicators
+
+## Technical Indicators
+
+**Purpose:** Overlay technical indicators on the candlestick chart or display them in separate sub-panels. Users toggle indicators via checkboxes and preset buttons.
+
+**Key Components:**
+- `app/components/widgets/Chart.tsx` — Main chart with indicator series management
+- `app/components/IndicatorSelector.tsx` — Checkbox UI with presets (Trend, Momentum, Volatility, All, None)
+- `app/lib/indicators.ts` — Pure calculation functions for SMA, EMA, Bollinger Bands, RSI, MACD
+
+**Overlay Indicators (main chart pane):**
+- **SMA 20/50/200** — Simple Moving Averages (amber #f59e0b / blue #3b82f6 / purple #a855f7)
+- **EMA 12/26** — Exponential Moving Averages (cyan #06b6d4 / pink #ec4899)
+- **Bollinger Bands** — SMA(20) ± 2σ (cornflower blue, varying opacity)
+
+**Sub-Panel Indicators (separate panes via lightweight-charts paneIndex):**
+- **RSI (14)** — Relative Strength Index, 0-100 scale, horizontal lines at 30/70 (amber #f59e0b)
+- **MACD (12,26,9)** — MACD line (blue), Signal line (red), Histogram (green/red)
+
+**Presets:**
+- Trend = SMA 20, 50, 200
+- Momentum = RSI + MACD
+- Volatility = Bollinger Bands
+- All = everything enabled
+- None = everything disabled
+
+**Performance:** All indicator calculations are memoized with `useMemo` (depend on `data` only). Chart recreates when config changes but data is not recalculated.
+
+**Storage:** Indicator config saved to localStorage (`chart-indicator-config`) as JSON.
